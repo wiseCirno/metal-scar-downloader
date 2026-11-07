@@ -3,31 +3,36 @@ import { listen } from "@tauri-apps/api/event"
 import { StrictMode, useEffect } from "react"
 import { createRoot } from "react-dom/client"
 import { HashRouter, Route, Routes } from "react-router-dom"
+import { DownloadPanel } from "@/components/downloads"
 import { Nav, NavButton } from "@/components/nav"
 import { AppWindow, MainContent } from "@/components/window"
 import { AboutPage } from "@/pages/about"
 import { HomePage } from "@/pages/home"
 import { SettingsPage } from "@/pages/settings"
 import { initConfig } from "@/utils/config"
+import { I18nProvider, useI18n } from "@/utils/i18n"
 import { useAppStore } from "@/utils/store"
 
-// 初始化配置和应用数据
-initConfig().catch(console.error)
-useAppStore.getState().initAppData()
+async function bootstrap() {
+  try {
+    await initConfig()
+    await useAppStore.getState().initAppData()
+  } catch (error) {
+    console.error(error)
+  }
+}
+bootstrap()
 
 function App() {
+  const { t } = useI18n()
   useEffect(() => {
     let unlistenNavigate
     let unlistenMenuAction
-
-    // 监听菜单跳转
     listen("navigate", (event) => {
       window.location.hash = event.payload
     }).then((unlisten) => {
       unlistenNavigate = unlisten
     })
-
-    // 监听菜单功能
     listen("menu-action", (event) => {
       const { refreshSongList, downloadSongs } = useAppStore.getState()
       if (event.payload === "refresh") refreshSongList()
@@ -35,19 +40,17 @@ function App() {
     }).then((unlisten) => {
       unlistenMenuAction = unlisten
     })
-
     return () => {
-      if (unlistenNavigate) unlistenNavigate()
-      if (unlistenMenuAction) unlistenMenuAction()
+      unlistenNavigate?.()
+      unlistenMenuAction?.()
     }
   }, [])
-
   return (
     <AppWindow>
       <Nav>
-        <NavButton path="/" title="首页" />
-        <NavButton path="/settings" title="设置" />
-        <NavButton path="/about" title="关于" />
+        <NavButton path="/" title={t("home")} />
+        <NavButton path="/settings" title={t("settings")} />
+        <NavButton path="/about" title={t("about")} />
       </Nav>
       <MainContent>
         <Routes>
@@ -56,14 +59,16 @@ function App() {
           <Route path="/about" element={<AboutPage />} />
         </Routes>
       </MainContent>
+      <DownloadPanel />
     </AppWindow>
   )
 }
-
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <HashRouter>
-      <App />
-    </HashRouter>
+    <I18nProvider>
+      <HashRouter>
+        <App />
+      </HashRouter>
+    </I18nProvider>
   </StrictMode>,
 )

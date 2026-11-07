@@ -1,89 +1,114 @@
 import { invoke } from "@tauri-apps/api/core"
-import { listen } from "@tauri-apps/api/event"
-import { useEffect, useState } from "react"
+import { openUrl } from "@tauri-apps/plugin-opener"
+import { memo } from "react"
 import { AlbumCover } from "@/components/cover"
 import { DropdownMenu } from "@/components/menu"
 import { cn } from "@/utils/cn"
+import { useI18n } from "@/utils/i18n"
 import { useAppStore } from "@/utils/store"
 
-export function MusicItem({ song, showCover, selected, onSelect }) {
-  const { loading, isDownloading, downloadSongs, updateSongStatus } = useAppStore()
-  const [downloadProgress, setDownloadProgress] = useState(null)
+function isNeteaseMusicUrl(value) {
+  try {
+    const url = new URL(value)
+    return url.protocol === "https:" && url.hostname === "music.163.com"
+  } catch {
+    return false
+  }
+}
 
-  useEffect(() => {
-    const unlisten = listen("download-single-progress", (event) => {
-      const { song_id, progress } = event.payload
-      if (song_id === song.id) {
-        if (progress >= 100) {
-          setDownloadProgress(100)
-          setTimeout(() => {
-            setDownloadProgress(null)
-          }, 200) // 添加延迟，避免进度条没到头就消失
-        } else {
-          setDownloadProgress(progress)
-        }
-      }
-    })
+export const MusicItem = memo(function MusicItem({ song, showCover, selected, onSelect }) {
+  const { t } = useI18n()
+  const loading = useAppStore((state) => state.loading)
+  const isDownloading = useAppStore((state) => state.isDownloading)
+  const downloadSongs = useAppStore((state) => state.downloadSongs)
+  const updateSongStatus = useAppStore((state) => state.updateSongStatus)
+  const task = useAppStore((state) => state.downloadItems[song.id])
+  const progress = task && ["downloading", "processing", "cancelling"].includes(task.state) ? task.progress : null
 
-    return () => {
-      unlisten.then((fn) => fn())
-    }
-  }, [song.id])
-
-  const handleSetDownloadStatus = async (downloaded) => {
+  const setDownloaded = async (downloaded) => {
     await invoke("set_download_status", { songId: song.id, downloaded })
     updateSongStatus(song.id, downloaded)
   }
+  const select = (event) => {
+    if (!event.target.closest("button, [role='menu']")) onSelect(song.id, event)
+  }
+  const handleKeyDown = (event) => {
+    if ((event.key === "Enter" || event.key === " ") && !event.target.closest("button, [role='menu']")) {
+      event.preventDefault()
+      onSelect(song.id, event)
+    }
+  }
 
   return (
-    // biome-ignore lint/a11y/useFocusableInteractive lint/a11y/useKeyWithClickEvents: 歌曲卡片仅通过鼠标选择
     <div
       role="option"
+      tabIndex={0}
+      aria-selected={selected}
       className={cn(
-        "relative flex items-center gap-4 h-fit p-4 border backdrop-blur-2xs transition",
+        "relative flex items-center gap-4 h-fit p-4 border bg-background/35 transition-colors [&>button]:shrink-0",
         selected && "border-lime-400/70 bg-lime-400/5",
       )}
-      onClick={(event) => {
-        if (!event.target.closest("button, [role='menu']")) onSelect(song.id, event)
-      }}
+      onClick={select}
+      onKeyDown={handleKeyDown}
     >
       {showCover && <AlbumCover song={song} className="size-20 shrink-0" />}
-
       <span className="flex-1 flex flex-col gap-1 min-w-0">
-        <span className="text-base font-semibold">{song.title}</span>
-        <span className="flex items-center gap-3 text-secondary">
-          {song.instrumental && <span className="text-amber-400">伴奏</span>}
-          {song.instrumental && <span className="w-px h-3 bg-secondary rotate-16" />}
-          <span>{song.publish}</span>
-          <span className="w-px h-3 bg-secondary rotate-16" />
-          <span className="flex-1 truncate whitespace-nowrap">{song.album_title}</span>
+        <span className="text-base font-semibold wrap-anywhere" title={song.title}>
+          {song.title}
+        </span>
+        {song.download && song.downloaded_quality && (
+          <span className="text-xs text-lime-400">
+            {t(
+              {
+                standard: "qualityStandard",
+                higher: "qualityHigher",
+                exhigh: "qualityExhigh",
+                lossless: "qualityLossless",
+                hires: "qualityHires",
+              }[song.downloaded_quality] || "audioQuality",
+            )}
+          </span>
+        )}
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-secondary">
+          {song.vip && (
+            <span className="shrink-0 whitespace-nowrap text-amber-400" title={t("vipHint")}>
+              {t("vipMark")}
+            </span>
+          )}
+          {(song.instrumental || /instrumental/i.test(song.title || "")) && (
+            <span className="shrink-0 whitespace-nowrap text-amber-400">{t("instrumentalMark")}</span>
+          )}
+          <span className="shrink-0 whitespace-nowrap">{song.publish}</span>
+          <span className="w-px h-3 shrink-0 bg-secondary rotate-16" aria-hidden="true" />
+          <span className="min-w-0 flex-1 basis-24 truncate" title={song.artist || song.album_title}>
+            {song.artist || song.album_title}
+          </span>
         </span>
       </span>
-
       {song.download && (
         <div className="absolute top-0 right-0 border-t-10 border-l-10 border-t-lime-400 border-l-transparent pointer-events-none" />
       )}
-
-      {downloadProgress !== null && (
-        <div
-          className="absolute left-0 bottom-0 h-0.75 bg-lime-400 transition pointer-events-none"
-          style={{ width: `${downloadProgress}%` }}
-        />
+      {progress !== null && (
+        <div className="absolute left-0 bottom-0 h-0.75 bg-lime-400 transition" style={{ width: `${progress}%` }} />
       )}
-
       <DropdownMenu
         items={[
           {
-            label: song.download ? "重新下载歌曲" : "下载歌曲",
+            label: song.download ? t("redownload") : t("download"),
             disabled: loading || isDownloading,
             onClick: () => downloadSongs([song]),
           },
           {
-            label: song.download ? "标为未下载" : "标为已下载",
-            onClick: () => handleSetDownloadStatus(!song.download),
+            label: song.download ? t("markPending") : t("markDownloaded"),
+            onClick: () => setDownloaded(!song.download),
+          },
+          {
+            label: t("openTrack"),
+            disabled: !isNeteaseMusicUrl(song.music_url),
+            onClick: () => openUrl(song.music_url),
           },
         ]}
       />
     </div>
   )
-}
+})

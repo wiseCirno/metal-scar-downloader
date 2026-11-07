@@ -2,8 +2,8 @@ use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, Submen
 use tauri::{App, Emitter};
 
 pub fn create_menu(app: &App) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Error>> {
-    let app_menu = SubmenuBuilder::new(app, "塞壬唱片下载器")
-        .item(&MenuItemBuilder::with_id("about", "关于塞壬唱片下载器").build(app)?)
+    let app_menu = SubmenuBuilder::new(app, "铁痕电台下载器")
+        .item(&MenuItemBuilder::with_id("about", "关于铁痕电台下载器").build(app)?)
         .separator()
         .item(
             &MenuItemBuilder::with_id("settings", "设置")
@@ -11,11 +11,11 @@ pub fn create_menu(app: &App) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Er
                 .build(app)?,
         )
         .separator()
-        .item(&PredefinedMenuItem::hide(app, Some("隐藏塞壬唱片下载器"))?)
+        .item(&PredefinedMenuItem::hide(app, Some("隐藏铁痕电台下载器"))?)
         .item(&PredefinedMenuItem::hide_others(app, Some("隐藏其他"))?)
         .item(&PredefinedMenuItem::show_all(app, Some("显示全部"))?)
         .separator()
-        .item(&PredefinedMenuItem::quit(app, Some("退出塞壬唱片下载器"))?)
+        .item(&PredefinedMenuItem::quit(app, Some("退出铁痕电台下载器"))?)
         .build()?;
 
     let music_menu = SubmenuBuilder::new(app, "下载")

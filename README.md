@@ -1,88 +1,164 @@
 <div align="center">
-<h3 align="center">明日方舟塞壬唱片下载器</h1>
-<p align="center">从塞壬唱片官网下载原汁原味的音乐专辑，并借助网易云音乐 API 补全缺失的元数据</p>
+<h3>铁痕电台下载器</h3>
+<p>从网易云音乐下载铁痕电台的音乐专辑，保存封面、歌词与歌曲信息</p>
 
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-d8d8d8)
-![Stars](https://img.shields.io/github/stars/nuthx/siren-downloader?style=flat&color=d8d8d8)
-![Downloads](https://img.shields.io/github/downloads/nuthx/siren-downloader/total?color=d8d8d8)
-![License](https://img.shields.io/github/license/nuthx/siren-downloader?color=d8d8d8)
-[![Release](https://img.shields.io/github/v/release/nuthx/siren-downloader?color=d8d8d8&label=version)](https://github.com/nuthx/siren-downloader/releases/latest)
+![Stars](https://img.shields.io/github/stars/wiseCirno/metal-scar-downloader?style=flat&color=d8d8d8)
+![Downloads](https://img.shields.io/github/downloads/wiseCirno/metal-scar-downloader/total?color=d8d8d8)
+![License](https://img.shields.io/github/license/wiseCirno/metal-scar-downloader?color=d8d8d8)
+[![Release](https://img.shields.io/github/v/release/wiseCirno/metal-scar-downloader?color=d8d8d8&label=version)](https://github.com/wiseCirno/metal-scar-downloader/releases/latest)
 
-<img src="images/screenshot.webp" width=720 />
+<img src="images/all_songs.webp" alt="全部歌曲与年份、下载状态筛选" width="960" />
 </div>
+
+## 特色
+
+- 按歌曲或专辑浏览，支持搜索歌曲、专辑和艺人
+- 支持单曲下载、多选下载和增量更新，随时查看进度与取消任务
+- 最高音质可选 Hi-Res、无损、极高和标准，显示每首歌曲实际下载音质
+- 自动写入歌曲信息与专辑封面，支持选择艺人分隔符、日期格式和专辑目录格式
+- 支持下载歌词、伴奏筛选，以及简体中文、繁体中文、英语、日语和韩语界面
+- Windows 便携版解压即可运行，内置 Node.js 与网易云音乐 API 运行资源
 
 ## 安装
 
-在 [Release](https://github.com/nuthx/siren-downloader/releases/latest) 页面下载最新版本，支持 Windows 与 macOS 平台
+在 [Release](https://github.com/wiseCirno/metal-scar-downloader/releases/latest) 页面下载最新版本，Windows 便携版解压后运行
+EXE 即可
 
-在早期 Windows 10 及以前的系统中，需要手动安装 WebView2 运行时，请在 [这里](https://developer.microsoft.com/zh-cn/microsoft-edge/webview2) 下载安装
+Windows 需要 WebView2
+运行时，启动时若提示缺少组件，可在 [这里](https://developer.microsoft.com/zh-cn/microsoft-edge/webview2) 下载安装
 
-在 masOS 上可能会出现“已损坏”或“打不开应用程序”的问题，请参考 [常见问题](#常见问题)
+macOS 用户可参考文末的开发与构建说明，从源码构建应用
 
 ## 配置
 
-下载歌曲前需在设置中预填下载路径，并安装 FFmpeg 工具
+下载歌曲前，在设置中选择下载路径、登录网易云音乐账号，并安装 FFmpeg 工具
 
 Windows 支持一键下载安装 FFmpeg
 
-macOS 需要手动安装 [Homebrew](https://brew.sh) 并通过 `brew install ffmpeg` 安装 FFmpeg 工具
+macOS 需要安装 [Homebrew](https://brew.sh)，并通过 `brew install ffmpeg` 安装 FFmpeg 工具
 
 安装完成后，点击“查看版本”可正确显示 FFmpeg 版本，则表示安装成功
 
+最高音质默认为无损，可根据账号权限选择 Hi-Res、无损、极高或标准；下载时会从所选音质开始逐级尝试，并保存实际取得的音质
+
+音频标签中的专辑艺人固定为 `铁痕电台-MSR`，多位艺人默认用分号 `;` 分隔，可在设置中选择适合自己音乐媒体库的格式
+
 ## 使用说明
 
-程序支持下载单一歌曲或批量下载所有歌曲，批量下载时会根据设置中“下载伴奏”选项决定是否跳过伴奏歌曲
+点击“刷新歌曲列表”可获取最新曲库，默认读取网易云音乐中的 [铁痕电台](https://music.163.com/#/artist?id=122546004)
 
-点击歌曲卡片可切换选择状态；支持使用 Ctrl 或 Shift 键连续选择。选好后点击“下载所选歌曲”即可批量下载。
+程序支持单曲下载和批量下载，批量下载时会根据“下载伴奏”选项决定是否包含伴奏歌曲
 
-若开启“下载歌词”选项，则下载歌曲时会同步从塞壬唱片官网获取歌词，并下载至同目录下 LRC 文件
+点击歌曲卡片可切换选择状态；`Ctrl/⌘ + 点击` 可多选，`Shift + 点击` 可选择连续范围，`Ctrl/⌘ + A`
+可选中当前筛选下的全部歌曲。选好后点击“下载所选”，点击“取消全选”可清空选择
 
-塞壬唱片官网提供了 MP3 与 WAV 两种格式的音乐文件，当歌曲为 WAV 格式时，会自动转换为 FLAC 格式
+切换到“按专辑”可查看专辑封面、发行日期与歌曲数量，点击专辑可查看其中歌曲；年份和下载状态筛选同样适用
 
-专辑封面来自于网易云音乐，若封面尺寸过大，会先缩放至 1500x1500 像素后再写入歌曲文件
+<div align="center">
+<img src="images/album.webp" alt="按专辑浏览" width="960" />
+</div>
+
+在顶部搜索框输入关键词，可搜索歌曲、专辑和艺人。选择歌曲会滚动定位到对应位置，选择专辑可查看专辑内容，选择艺人可筛选其参与的歌曲
+
+<div align="center">
+<img src="images/search.webp" alt="搜索歌曲、专辑与艺人" width="960" />
+</div>
+
+点击左下角的下载列表图标，可逐首查看下载进度、处理状态与实际音质，并取消单首或全部下载任务
+
+下载失败时，提示中会显示日志路径，详细信息保存在下载目录的 `.metal-scar/logs` 中
+
+<div align="center">
+<img src="images/download_list.webp" alt="下载列表与逐首进度" width="960" />
+</div>
+
+开启“下载歌词”后，会将可用歌词保存为与歌曲同名的 LRC 文件
+
+FLAC、MP3 和 M4A 文件会写入歌曲信息与专辑封面，专辑目录同时保存 `cover.jpg`。艺人分隔符和日期格式设置在后续下载时生效
 
 ## 常见问题
 
-#### 1. macOS 运行提示“未打开”、“已损坏”、或“移到废纸篓”等弹窗
+#### 1. 登录后如何获取更高音质
 
-由于缺少签名，导致无法直接打开下载的应用程序，需手动移除应用的安全隔离属性
+可下载音质由网易云音乐账号权益与曲目资源决定。请在设置中选择最高音质，程序会依次尝试可用音源，并在歌曲卡片与下载列表中显示实际音质
 
-将 `塞壬唱片下载器` 拖入到 `Application` 文件夹后，打开终端，输入以下命令：
+#### 2. 为什么没法下载歌曲
 
-```bash
-sudo xattr -dr com.apple.quarantine /Applications/塞壬唱片下载器.app
-```
+铁痕电台目前并没有官网，能下载歌曲的渠道目前只有几家音乐代理软件，而网易云相对容易开发。铁痕电台大部分歌曲均为 VIP
+歌曲，需要一定的[付费歌曲额度](https://music.163.com/#/member/downinfo)才能下载，因此需要登陆账号拥有对应权益
 
-若程序不在 `/Applications` 目录下，请将 `/Applications/塞壬唱片下载器.app` 替换为实际路径
+#### 3. 无法下载 FFmpeg
 
-进入“系统设置” -> “隐私与安全性”，滑动至最底部，在 `已阻止 塞壬唱片下载器 以保护Mac` 中点击“仍要打开”
+Windows 可从 [官网](https://ffmpeg.org/download.html) 手动下载 FFmpeg，将 `ffmpeg.exe` 复制到
+`%APPDATA%\com.wisecirno.metal-scar-downloader\bin` 目录下，再点击“查看版本”确认安装结果
 
-#### 2. 无法下载 FFmpeg
+macOS 可通过 `brew install ffmpeg` 安装，下载速度较慢时可调整网络环境后重试
 
-Windows 平台可从 [官网](https://ffmpeg.org/download.html) 手动下载 FFmpeg 二进制文件，重命名为 `ffmpeg.exe` 并复制到 `%APPDATA%\com.nuthx.siren-downloader\bin` 目录下
+#### 4. 如何定义歌曲的“已下载”状态
 
-macOS 平台若下载速度较慢，可通过优化网络环境加速下载
+歌曲下载成功后，会将“已下载”状态保存到应用数据目录中
 
-#### 3. 如何定义歌曲的“已下载”状态
+歌曲文件移动或删除后，程序仍保留下载状态，方便将音乐转移到其他设备，并继续增量更新
 
-歌曲下载成功后，会写入“已下载”状态到配置目录中
+需要重新下载时，可在歌曲卡片菜单中将其标记为待下载，也可在设置中批量修改下载状态
 
-歌曲文件移动或删除时，不影响程序中显示的下载状态
+#### 5. 如何让媒体库区分多位艺人
 
-#### 4. 下载时报错“网易云封面为空”
+在设置中选择“艺人分隔符”，默认使用分号，例如 `艺人A;艺人B`。可根据自己的音乐媒体库选择分号、斜杠、逗号、顿号或 ` & `
 
-部分专辑在塞壬唱片官网与网易云音乐中的专辑名称不同，需要在在配置文件层面进行匹配
+修改后重新下载对应歌曲，即可更新文件中的音频标签
 
-最新版本已经同步匹配了所有有差异的专辑名称
+## 后续计划
 
-当有新的专辑发布且专辑名称不同时，则会报错“网易云封面为空”，更新软件至最新版本后即可解决
+- 等待官方网站，这样就能和塞壬唱片的实现方式对齐
+- 增添一些实用功能，让开发者薅掉一把头发可能就有思路了（
 
 ## 致谢
 
-[塞壬唱片-MSR](https://monster-siren.hypergryph.com/)
+### 唱片提供者
+
+[铁痕电台-MSR](https://music.163.com/#/artist?id=122546004)
+
+### 核心项目参考
+
+[nuthx/siren-downloader](https://github.com/nuthx/siren-downloader)
+
+[NeteaseCloudMusicApiEnhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced)
+
+### 基础框架
+
+[FFmpeg](https://ffmpeg.org/)
+
+[Tauri](https://tauri.app/)
 
 ## 免责声明
 
-本工具仅用于学习与技术交流，所有音乐版权均归原作者及相关版权方所有，任何下载内容不得用于商业用途
+本工具仅用于学习与技术交流，所有音乐版权均归原作者及相关版权方所有，任何下载内容均不得用于商业用途。
 
-本工具中使用的塞壬唱片及相关 LOGO 均为其合法拥有者的注册商标或版权标识，仅用于标识目的，归相关版权方所有
+本工具中使用的铁痕电台及相关LOGO均为其合法拥有者的注册商标或版权标识，仅用于标识目的，归相关版权方所有
+
+<details>
+<summary>开发与构建</summary>
+
+基于 Tauri 2、Rust 和 React。桌面构建需要 Rust、[Tauri 系统依赖](https://v2.tauri.app/start/prerequisites/) 和目标平台工具链
+
+```sh
+pnpm install --frozen-lockfile
+pnpm run build
+cargo test --manifest-path src/Cargo.toml --lib
+pnpm exec tauri build --config src/tauri.conf.json
+```
+
+首次构建会准备固定版本的 Node.js 运行时和网易云音乐 API 生产依赖，并按 Node.js 官方 SHA-256
+清单校验运行时。运行资源随桌面应用打包，首次使用时释放到应用数据目录，之后按版本复用
+
+升级网易云音乐 API 依赖时，更新独立清单和锁文件：
+
+```sh
+npm install --prefix runtime/netease-api --save-exact @neteasecloudmusicapienhanced/api@<version> --ignore-scripts
+```
+
+之后执行 `pnpm run build` 或 `pnpm dev`，即可按新版本准备运行资源
+
+</details>

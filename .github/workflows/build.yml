@@ -16,20 +16,26 @@ jobs:
             os: macos-latest
             target: aarch64-apple-darwin
             args: --bundles dmg
-            artifact: siren-downloader_${{ github.ref_name }}_macos_aarch64.dmg
+            artifact: metal-scar-downloader_${{ github.ref_name }}_macos_aarch64.dmg
 
           - name: macOS (Intel)
-            os: macos-latest
+            os: macos-15-intel
             target: x86_64-apple-darwin
             args: --bundles dmg
-            artifact: siren-downloader_${{ github.ref_name }}_macos_x64.dmg
+            artifact: metal-scar-downloader_${{ github.ref_name }}_macos_x64.dmg
 
           - name: Windows (x64)
             os: windows-latest
             target: x86_64-pc-windows-msvc
             args: --no-bundle
-            artifact: siren-downloader_${{ github.ref_name }}_windows_x64.zip
-            exeName: 塞壬唱片下载器.exe
+            artifact: metal-scar-downloader_${{ github.ref_name }}_windows_x64.zip
+            exeName: 铁痕电台下载器.exe
+
+          - name: Linux (x64)
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: --no-bundle
+            artifact: metal-scar-downloader_${{ github.ref_name }}_linux_x64.tar.gz
 
     name: Build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -59,16 +65,21 @@ jobs:
         with:
           workspaces: ./src -> target
 
+      - name: Install Linux desktop build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
       - name: Install frontend dependencies
         run: pnpm install
 
       - name: Build Tauri app
         run: pnpm tauri build --target ${{ matrix.target }} ${{ matrix.args }}
         env:
-          CI: ${{ matrix.os == 'macos-latest' && 'false' || 'true' }}
+          CI: ${{ runner.os == 'macOS' && 'false' || 'true' }}
+          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.target }}
 
       - name: Prepare macOS artifact
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         run: |
           DMG=$(find src/target/${{ matrix.target }}/release/bundle/dmg -name "*.dmg" | head -1)
           cp "$DMG" "${{ matrix.artifact }}"
@@ -80,6 +91,10 @@ jobs:
           $exe = Get-ChildItem "src/target/${{ matrix.target }}/release/*.exe" | Select-Object -First 1
           Copy-Item -LiteralPath $exe.FullName -Destination "${{ matrix.exeName }}"
           Compress-Archive -LiteralPath "${{ matrix.exeName }}" -DestinationPath "${{ matrix.artifact }}"
+
+      - name: Prepare Linux artifact
+        if: runner.os == 'Linux'
+        run: tar -czf "${{ matrix.artifact }}" -C "src/target/${{ matrix.target }}/release" metal-scar-downloader
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -118,3 +133,4 @@ jobs:
           files: |
             *.dmg
             *.zip
+            *.tar.gz

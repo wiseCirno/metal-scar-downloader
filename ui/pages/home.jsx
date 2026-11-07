@@ -1,203 +1,342 @@
 import { confirm, message } from "@tauri-apps/plugin-dialog"
 import { openUrl } from "@tauri-apps/plugin-opener"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useLocation, useSearchParams } from "react-router-dom"
 import { VirtuosoGrid } from "react-virtuoso"
 import { Button } from "@/components/button"
+import { AlbumCover } from "@/components/cover"
+import { DownloadLauncher } from "@/components/downloads"
 import { MusicItem } from "@/components/music"
 import { Tab } from "@/components/tab"
 import { cn } from "@/utils/cn"
-import { getConfig } from "@/utils/config"
+import { CONFIG_CHANGED_EVENT, getConfig } from "@/utils/config"
+import { useI18n } from "@/utils/i18n"
+import { albumKey, compareSongs, groupAlbums, isInstrumental, songArtists } from "@/utils/library"
 import { useAppStore } from "@/utils/store"
+import { extractYears } from "@/utils/year"
+
+function blocksSelectAll(target) {
+  return (
+    target instanceof Element &&
+    (target.closest("input, textarea, select, [role='textbox']") || target.isContentEditable)
+  )
+}
 
 export function HomePage() {
-  const { hasUpdate, songList, years, status, loading, isDownloading, refreshSongList, downloadSongs } = useAppStore()
+  const { t } = useI18n()
+  const hasUpdate = useAppStore((state) => state.hasUpdate)
+  const songList = useAppStore((state) => state.songList)
+  const loading = useAppStore((state) => state.loading)
+  const isDownloading = useAppStore((state) => state.isDownloading)
+  const refreshSongList = useAppStore((state) => state.refreshSongList)
+  const downloadSongs = useAppStore((state) => state.downloadSongs)
+  const [params, setParams] = useSearchParams()
+  const location = useLocation()
   const [selectedYear, setSelectedYear] = useState("all")
   const [selectedFilter, setSelectedFilter] = useState("all")
+  const [view, setView] = useState("songs")
+  const albumId = params.get("album")
+  const artist = params.get("artist")
+  const targetId = params.get("song")
+  const albumGrid = view === "albums" && !albumId
   const [showCover, setShowCover] = useState(true)
+  const [includeInstrumental, setIncludeInstrumental] = useState(false)
   const [selectedSongIds, setSelectedSongIds] = useState([])
   const [isConfirmingDownload, setIsConfirmingDownload] = useState(false)
-  const selectionAnchor = useRef(null)
-
-  // 是否显示封面
+  const anchor = useRef(null)
+  const handledLocation = useRef(null)
   useEffect(() => {
-    getConfig().then((config) => setShowCover(config.show_cover))
+    let active = true
+    let changed = false
+    const applyConfig = (config) => {
+      setShowCover(config.show_cover)
+      setIncludeInstrumental(config.download_instrumental === true)
+    }
+    const onConfigChanged = (event) => {
+      changed = true
+      applyConfig(event.detail)
+    }
+    window.addEventListener(CONFIG_CHANGED_EVENT, onConfigChanged)
+    getConfig()
+      .then((config) => {
+        if (active && !changed) applyConfig(config)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+      window.removeEventListener(CONFIG_CHANGED_EVENT, onConfigChanged)
+    }
   }, [])
-
   useEffect(() => {
-    if (!songList?.length) {
+    if (handledLocation.current === location.key) return
+    handledLocation.current = location.key
+    if (targetId || albumId || artist) {
+      if (!location.state?.preserveLibraryFilters) {
+        setSelectedYear("all")
+        setSelectedFilter("all")
+      }
+      setView(albumId ? "albums" : "songs")
       setSelectedSongIds([])
-      return
+      anchor.current = null
     }
-
-    const availableSongIds = new Set(songList.map((song) => song.id))
-    setSelectedSongIds((current) => current.filter((songId) => availableSongIds.has(songId)))
-  }, [songList])
-
-  // 缓存过滤后的歌曲列表
-  const filteredSongs = useMemo(() => {
-    const albumMap = (songList || []).reduce((map, song) => {
-      const { publish, download, album_id = "" } = song
-
-      if (
-        (selectedYear !== "all" && !publish?.startsWith(selectedYear)) ||
-        (selectedFilter === "pending" && download) ||
-        (selectedFilter === "downloaded" && !download)
-      ) {
-        return map
-      }
-
-      const list = map.get(album_id) || []
-      list.push(song)
-      map.set(album_id, list)
-      return map
-    }, new Map())
-
-    // 专辑层面倒序显示，歌曲顺序保持正序不变
-    return [...albumMap.values()].reverse().flat()
-  }, [songList, selectedYear, selectedFilter])
-
-  const selectedSongIdSet = useMemo(() => new Set(selectedSongIds), [selectedSongIds])
-  const selectedSongs = useMemo(
-    () => (songList || []).filter((song) => selectedSongIdSet.has(song.id)),
-    [songList, selectedSongIdSet],
+  }, [location.key, location.state?.preserveLibraryFilters, targetId, albumId, artist])
+  const visibleSongs = useMemo(
+    () => (songList || []).filter((song) => includeInstrumental || !isInstrumental(song)),
+    [songList, includeInstrumental],
   )
-
-  const handleSongSelection = (songId, event) => {
-    if (loading || isDownloading) return
-
-    if (event.shiftKey) {
-      const anchorIndex = filteredSongs.findIndex((song) => song.id === selectionAnchor.current)
-      const songIndex = filteredSongs.findIndex((song) => song.id === songId)
-      if (anchorIndex !== -1 && songIndex !== -1) {
-        const range = filteredSongs
-          .slice(Math.min(anchorIndex, songIndex), Math.max(anchorIndex, songIndex) + 1)
-          .map((song) => song.id)
-        setSelectedSongIds((current) => (event.ctrlKey || event.metaKey ? [...new Set([...current, ...range])] : range))
+  const years = useMemo(() => extractYears(visibleSongs), [visibleSongs])
+  useEffect(() => {
+    if (selectedYear !== "all" && !years.includes(selectedYear)) setSelectedYear("all")
+  }, [years, selectedYear])
+  const filteredSongs = useMemo(
+    () =>
+      visibleSongs
+        .filter(
+          (song) =>
+            (!albumId || albumKey(song) === albumId) &&
+            (!artist || songArtists(song).includes(artist)) &&
+            (selectedYear === "all" || song.publish?.startsWith(selectedYear)) &&
+            (selectedFilter !== "pending" || !song.download) &&
+            (selectedFilter !== "downloaded" || song.download),
+        )
+        .sort(compareSongs),
+    [visibleSongs, albumId, artist, selectedYear, selectedFilter],
+  )
+  const albums = useMemo(() => groupAlbums(filteredSongs), [filteredSongs])
+  const currentAlbum = useMemo(
+    () => (albumId ? groupAlbums(visibleSongs.filter((song) => albumKey(song) === albumId))[0] : null),
+    [visibleSongs, albumId],
+  )
+  useEffect(() => {
+    const ids = new Set(albumGrid ? [] : filteredSongs.map((song) => song.id))
+    setSelectedSongIds((current) => current.filter((id) => ids.has(id)))
+    if (!ids.has(anchor.current)) anchor.current = null
+  }, [filteredSongs, albumGrid])
+  const selectedSet = useMemo(() => new Set(selectedSongIds), [selectedSongIds])
+  const selectedSongs = useMemo(
+    () => (albumGrid ? [] : filteredSongs.filter((song) => selectedSet.has(song.id))),
+    [filteredSongs, selectedSet, albumGrid],
+  )
+  useEffect(() => {
+    const selectAll = (event) => {
+      if (
+        !(event.ctrlKey || event.metaKey) ||
+        event.key.toLowerCase() !== "a" ||
+        event.altKey ||
+        albumGrid ||
+        loading ||
+        isDownloading ||
+        isConfirmingDownload ||
+        blocksSelectAll(event.target) ||
+        blocksSelectAll(document.activeElement) ||
+        document.querySelector('[role="dialog"], [role="alertdialog"], dialog[open], [aria-modal="true"]')
+      )
         return
-      }
+      event.preventDefault()
+      setSelectedSongIds(filteredSongs.map((song) => song.id))
+      anchor.current = filteredSongs[0]?.id ?? null
     }
-
-    selectionAnchor.current = songId
-    setSelectedSongIds((current) => {
-      if (!event.ctrlKey && !event.metaKey) return [songId]
-      return current.includes(songId) ? current.filter((id) => id !== songId) : [...current, songId]
-    })
-  }
-
+    window.addEventListener("keydown", selectAll)
+    return () => window.removeEventListener("keydown", selectAll)
+  }, [filteredSongs, albumGrid, loading, isDownloading, isConfirmingDownload])
+  const targetIndex = targetId ? filteredSongs.findIndex((song) => String(song.id) === targetId) : -1
+  const selectSong = useCallback(
+    (songId, event) => {
+      if (loading || isDownloading) return
+      if (event.shiftKey) {
+        const a = filteredSongs.findIndex((song) => song.id === anchor.current)
+        const b = filteredSongs.findIndex((song) => song.id === songId)
+        if (a !== -1 && b !== -1) {
+          const range = filteredSongs.slice(Math.min(a, b), Math.max(a, b) + 1).map((song) => song.id)
+          setSelectedSongIds((current) =>
+            event.ctrlKey || event.metaKey ? [...new Set([...current, ...range])] : range,
+          )
+          return
+        }
+      }
+      anchor.current = songId
+      setSelectedSongIds((current) =>
+        !event.ctrlKey && !event.metaKey
+          ? [songId]
+          : current.includes(songId)
+            ? current.filter((id) => id !== songId)
+            : [...current, songId],
+      )
+    },
+    [filteredSongs, loading, isDownloading],
+  )
   const handleDownload = async (targets) => {
     setIsConfirmingDownload(true)
     try {
-      let songs = targets
-      if (!songs) {
-        const config = await getConfig()
-        songs = (songList || []).filter(
-          (song) => !song.download && (config.download_instrumental || !song.instrumental),
-        )
-      }
-
-      if (songs.length === 0) {
-        return await message("当前没有需要下载的歌曲。", { title: "下载歌曲", okLabel: "确定" })
-      }
-
+      const songs = targets || filteredSongs.filter((song) => !song.download)
+      if (!songs.length) return await message(t("nothingToDownload"), { title: t("download"), okLabel: t("ok") })
       if (
         (!targets || songs.length > 1) &&
-        !(await confirm(`本次将下载 ${songs.length} 首歌曲，确定继续吗？`, {
-          title: "下载歌曲",
+        !(await confirm(t("confirmDownload").replace("{count}", songs.length), {
+          title: t("download"),
           kind: "warning",
-          okLabel: "确认下载",
-          cancelLabel: "取消",
+          okLabel: t("confirm"),
+          cancelLabel: t("cancel"),
         }))
       )
         return
-
-      const result = await downloadSongs(targets)
-      if (targets && result?.successSongIds?.length) {
-        const successSongIds = new Set(result.successSongIds)
-        setSelectedSongIds((current) => current.filter((songId) => !successSongIds.has(songId)))
-      }
-    } catch (error) {
-      console.error("下载失败:", error)
+      const result = await downloadSongs(songs)
+      if (result?.successSongIds)
+        setSelectedSongIds((current) => current.filter((id) => !result.successSongIds.includes(id)))
     } finally {
       setIsConfirmingDownload(false)
     }
   }
-
-  if (!songList) {
+  const changeView = (next) => {
+    setView(next)
+    setParams({})
+  }
+  if (!songList)
     return (
       <div className="flex-center flex-col gap-2 h-full">
-        <h2 className="text-2xl">暂无数据</h2>
-        <span className="text-secondary pb-6">{status?.message}</span>
+        <h2 className="text-2xl">{t("noData")}</h2>
+        <span className="text-secondary pb-6">{t("emptyStatus")}</span>
         <Button onClick={refreshSongList} disabled={loading}>
-          获取歌曲列表
+          {t("getList")}
         </Button>
+        <DownloadLauncher />
       </div>
     )
-  }
-
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex-center justify-between mx-10 px-6 py-5 border border-t-0 backdrop-blur-2xs">
-        <Tab
-          items={[{ value: "all", label: "全部年份" }, ...years.map((year) => ({ value: year, label: year }))]}
-          value={selectedYear}
-          onChange={setSelectedYear}
-        />
-        <Tab
-          items={[
-            { value: "all", label: "全部歌曲" },
-            { value: "pending", label: "待下载" },
-            { value: "downloaded", label: "已下载" },
-          ]}
-          value={selectedFilter}
-          onChange={setSelectedFilter}
-        />
-      </div>
-
-      <VirtuosoGrid
-        totalCount={filteredSongs.length}
-        listClassName="grid grid-cols-[repeat(auto-fit,minmax(460px,1fr))] gap-2 my-2 pl-10 pr-8"
-        style={{ overflowY: "scroll" }}
-        itemContent={(index) => (
-          <MusicItem
-            song={filteredSongs[index]}
-            showCover={showCover}
-            selected={selectedSongIdSet.has(filteredSongs[index].id)}
-            onSelect={handleSongSelection}
+      <div className="flex flex-col gap-4 mx-10 px-5 py-4 border border-t-0 backdrop-blur-2xs">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <Tab
+            items={[
+              { value: "songs", label: t("allSongs") },
+              { value: "albums", label: t("byAlbum") },
+            ]}
+            value={view}
+            onChange={changeView}
           />
+          <Tab
+            items={[{ value: "all", label: t("allYears") }, ...years.map((year) => ({ value: year, label: year }))]}
+            value={selectedYear}
+            onChange={setSelectedYear}
+          />
+          <Tab
+            items={[
+              { value: "all", label: t("allStatuses") },
+              { value: "pending", label: t("pending") },
+              { value: "downloaded", label: t("downloaded") },
+            ]}
+            value={selectedFilter}
+            onChange={setSelectedFilter}
+          />
+        </div>
+        {albumId && (
+          <div className="flex items-center gap-4 min-w-0">
+            <Button onClick={() => changeView("albums")}>{t("backToAlbums")}</Button>
+            <span className="truncate font-semibold">{currentAlbum?.title || t("unknownAlbum")}</span>
+            <span className="text-secondary truncate">{currentAlbum?.artists}</span>
+          </div>
         )}
-      />
-
-      <div className="flex-center justify-end gap-4 mx-10 py-6 border-t">
-        {status && (
-          <span
-            className={cn(
-              "flex-1 min-w-0 truncate",
-              status?.type === "error" && "text-red-400",
-              status?.type === "warning" && "text-amber-400",
+        {artist && (
+          <div className="flex items-center gap-3">
+            <span className="truncate">{t("artistFilter").replace("{artist}", artist)}</span>
+            <Button onClick={() => setParams({})}>{t("clearFilter")}</Button>
+          </div>
+        )}
+        {!albumGrid && <p className="text-xs text-secondary">{t("selectionHint")}</p>}
+        {targetId && (
+          <p role="status" className="text-xs text-secondary">
+            {t(
+              targetIndex >= 0
+                ? "searchLocated"
+                : !includeInstrumental && songList.some((song) => String(song.id) === targetId && isInstrumental(song))
+                  ? "searchInstrumentalHidden"
+                  : "searchTargetMissing",
             )}
-          >
-            {status.message}
-          </span>
+          </p>
         )}
+      </div>
+      {!filteredSongs.length ? (
+        <div className="flex-1 flex-center text-secondary">{t("noMatchingSongs")}</div>
+      ) : albumGrid ? (
+        <VirtuosoGrid
+          key="albums"
+          data={albums}
+          computeItemKey={(_, album) => album.id}
+          listClassName="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4 my-4 pl-10 pr-8"
+          style={{ flex: 1, minHeight: 0, overflowY: "scroll" }}
+          itemContent={(_, album) => (
+            <button
+              type="button"
+              className="w-full text-left p-4 border transition-colors bg-background/35"
+              onClick={() => setParams({ album: album.id }, { state: { preserveLibraryFilters: true } })}
+            >
+              {showCover && <AlbumCover song={album.song} size={640} className="aspect-square w-full mb-3" />}
+              <span className="block truncate font-semibold" title={album.title}>
+                {album.title || t("unknownAlbum")}
+              </span>
+              <span className="block truncate text-secondary mt-1" title={album.artists}>
+                {album.artists}
+              </span>
+              <span className="flex justify-between gap-2 text-xs text-secondary mt-3">
+                <span>{album.publish}</span>
+                <span>{t("albumSongCount").replace("{count}", album.songs.length)}</span>
+              </span>
+            </button>
+          )}
+        />
+      ) : (
+        <VirtuosoGrid
+          key={`songs:${albumId || artist || "all"}:${targetId ? `${location.key}:${targetIndex}` : ""}`}
+          initialTopMostItemIndex={targetIndex >= 0 ? { index: targetIndex, align: "center" } : 0}
+          data={filteredSongs}
+          computeItemKey={(_, song) => song.id}
+          listClassName="grid grid-cols-[repeat(auto-fit,minmax(420px,1fr))] gap-2 my-2 pl-10 pr-8"
+          style={{ flex: 1, minHeight: 0, overflowY: "scroll" }}
+          itemContent={(_, song) => (
+            <div
+              className={cn(
+                "transition-colors",
+                String(song.id) === targetId && "ring-2 ring-lime-400 ring-inset bg-lime-400/10",
+              )}
+            >
+              <MusicItem song={song} showCover={showCover} selected={selectedSet.has(song.id)} onSelect={selectSong} />
+            </div>
+          )}
+        />
+      )}
+      <div className="flex-center justify-end gap-4 mx-10 py-5 border-t">
+        <DownloadLauncher />
         {hasUpdate && (
           <Button
-            onClick={() => openUrl("https://github.com/nuthx/siren-downloader/releases/latest")}
-            className="text-amber-400 border-amber-400/80 hover:text-amber-400/70 hover:border-amber-400/50"
+            onClick={() => openUrl("https://github.com/wiseCirno/metal-scar-downloader/releases/latest")}
+            className="text-amber-400 border-amber-400/80"
           >
-            发现新版本
+            {t("update")}
           </Button>
         )}
         <Button onClick={refreshSongList} disabled={loading}>
-          更新歌曲列表
+          {t("refresh")}
+        </Button>
+        <Button
+          onClick={() => {
+            setSelectedSongIds([])
+            anchor.current = null
+          }}
+          disabled={!selectedSongIds.length || loading || isDownloading || isConfirmingDownload}
+        >
+          {t("deselectAll")}
         </Button>
         <Button
           onClick={() => handleDownload(selectedSongs)}
-          disabled={loading || isDownloading || isConfirmingDownload || selectedSongIds.length === 0}
+          disabled={loading || isDownloading || isConfirmingDownload || !selectedSongs.length}
         >
-          下载所选歌曲{selectedSongIds.length > 0 && ` (${selectedSongIds.length})`}
+          {t("downloadSelected")} {selectedSongs.length > 0 && `(${selectedSongs.length})`}
         </Button>
-        <Button onClick={() => handleDownload()} disabled={loading || isDownloading || isConfirmingDownload}>
-          下载所有歌曲
+        <Button
+          onClick={() => handleDownload()}
+          disabled={loading || isDownloading || isConfirmingDownload || !filteredSongs.length}
+        >
+          {t("downloadAll")}
         </Button>
       </div>
     </div>

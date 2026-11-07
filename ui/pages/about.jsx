@@ -1,27 +1,33 @@
 import { openUrl } from "@tauri-apps/plugin-opener"
 import packageJson from "#/package.json"
+import { useI18n } from "@/utils/i18n"
 
 export function AboutPage() {
+  const { t } = useI18n()
   return (
-    <div className="flex-center flex-col gap-16 h-full">
+    <div className="flex-center flex-col gap-12 h-full p-8">
       <div className="flex-center flex-col gap-2">
-        <img src="/logo/siren.svg" alt="logo" className="w-54" />
-        <h1 className="text-xl font-bold">明日方舟塞壬唱片下载器</h1>
-        <span className="text-secondary pt-1">版本 {packageJson.version}</span>
+        <img src="/logo/metal-scar.png" alt="Metal Scar Radio" className="w-54" />
+        <h1 className="text-xl font-bold">{t("appTitle")}</h1>
+        <span className="text-secondary pt-1">
+          {t("version")} {packageJson.version}
+        </span>
       </div>
-
-      <button type="button" onClick={() => openUrl("https://github.com/nuthx/siren-downloader")}>
+      <button
+        type="button"
+        aria-label={t("project")}
+        onClick={() => openUrl("https://github.com/wiseCirno/metal-scar-downloader")}
+      >
         <img
           src="/logo/github.svg"
-          alt="logo"
+          alt="GitHub"
           className="size-6 hover:opacity-70 cursor-pointer transition"
           draggable="false"
         />
       </button>
-
-      <div className="flex-center flex-col gap-1 text-xs text-secondary text-center">
-        <p>本工具仅用于学习与技术交流，所有音乐版权均归原作者及相关版权方所有，任何下载内容不得用于商业用途</p>
-        <p>本工具中使用的塞壬唱片及相关 LOGO 均为其合法拥有者的注册商标或版权标识，仅用于标识目的，归相关版权方所有</p>
+      <div className="flex-center flex-col gap-2 text-xs text-secondary text-center">
+        <p>{t("copyright")}</p>
+        <p>{t("trademarks")}</p>
       </div>
     </div>
   )

@@ -1,330 +1,477 @@
 import { Channel, invoke } from "@tauri-apps/api/core"
-import { appDataDir } from "@tauri-apps/api/path"
 import { open } from "@tauri-apps/plugin-dialog"
-import { openPath } from "@tauri-apps/plugin-opener"
 import { platform } from "@tauri-apps/plugin-os"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/button"
 import { Input } from "@/components/input"
 import { Select } from "@/components/select"
 import { SettingsItem } from "@/components/settings"
 import { cn } from "@/utils/cn"
 import { getConfig, resetConfig, saveConfig } from "@/utils/config"
+import { languageOptions, safeNeteaseErrorCode, useI18n } from "@/utils/i18n"
 import { useAppStore } from "@/utils/store"
 
-const ffmpegMessages = {
-  connecting: "正在连接下载服务器",
-  extracting: "下载完成，正在解压",
-  checking: "正在检查 FFmpeg 版本",
-}
-
 export function SettingsPage() {
-  const { songList, setAllSongStatuses } = useAppStore()
+  const { t, setLanguage } = useI18n()
+  const { reloadLocalMusic, setAllSongStatuses, songList, loading, isDownloading } = useAppStore()
   const [config, setConfig] = useState(null)
   const [status, setStatus] = useState(null)
-  const [ffmpegMessage, setFFmpegMessage] = useState(null)
+  const [ffmpegBusy, setFFmpegBusy] = useState(false)
+  const [ffmpegProgress, setFFmpegProgress] = useState(null)
+  const ffmpegLock = useRef(false)
+  const [auth, setAuth] = useState(null)
+  const [authBusy, setAuthBusy] = useState(false)
+  const authLock = useRef(false)
+  const [phone, setPhone] = useState("")
+  const [countrycode, setCountrycode] = useState("86")
+  const [captcha, setCaptcha] = useState("")
+  const [captchaCooldown, setCaptchaCooldown] = useState(0)
   const [isUpdatingDownloadStatus, setIsUpdatingDownloadStatus] = useState(false)
+  const [isSavingConfig, setIsSavingConfig] = useState(false)
+  const [isResettingConfig, setIsResettingConfig] = useState(false)
+  const configActionLock = useRef(false)
 
-  // 加载配置
   useEffect(() => {
+    let active = true
     getConfig()
-      .then(setConfig)
-      .catch((error) => {
-        setStatus({ type: "error", message: `配置加载失败: ${error}` })
+      .then((loaded) => {
+        if (active) setConfig((current) => current ?? loaded)
       })
-  }, [])
-
-  // 处理配置项改变
-  const handleChange = (key, value) => {
-    setConfig({ ...config, [key]: value })
-  }
-
-  // 获取 FFmpeg 版本
-  const handleCheckVersion = async () => {
-    try {
-      const version = await invoke("get_ffmpeg_version")
-      setStatus({ type: "default", message: `当前版本: ${version}` })
-    } catch (error) {
-      setStatus({ type: "error", message: error })
+      .catch(() => {
+        if (active) setStatus({ type: "error", message: t("configLoadFailed") })
+      })
+    return () => {
+      active = false
     }
-  }
+  }, [t])
 
-  // 下载 FFmpeg
-  const handleDownloadFFmpeg = async () => {
-    setFFmpegMessage(ffmpegMessages.connecting)
-    try {
-      const onProgress = new Channel()
-      onProgress.onmessage = ({ stage, downloaded, total }) => {
-        if (stage !== "downloading") {
-          setFFmpegMessage(ffmpegMessages[stage])
-          return
+  useEffect(() => {
+    let active = true
+    invoke("netease_auth_status")
+      .then((result) => {
+        if (active) setAuth({ logged_in: result?.logged_in === true, nickname: result?.nickname || "" })
+      })
+      .catch(() => {
+        if (active) {
+          setAuth({ logged_in: false, nickname: "" })
+          setStatus({ type: "error", message: t("neteaseStatusFailed") })
         }
+      })
+    return () => {
+      active = false
+    }
+  }, [t])
 
-        const downloadedMB = (downloaded / 1024 / 1024).toFixed(1)
-        const totalSize = total ? ` / ${(total / 1024 / 1024).toFixed(1)} MB` : ""
-        setFFmpegMessage(`正在下载 FFmpeg：${downloadedMB} MB${totalSize}`)
-      }
-      await invoke("download_ffmpeg", { onProgress })
-      setFFmpegMessage(ffmpegMessages.checking)
-      const version = await invoke("get_ffmpeg_version")
-      setStatus({ type: "default", message: `下载成功: ${version}` })
-    } catch (error) {
-      setStatus({ type: "error", message: `下载失败: ${error}` })
+  useEffect(() => {
+    if (captchaCooldown <= 0) return undefined
+    const timer = setInterval(() => setCaptchaCooldown((value) => Math.max(0, value - 1)), 1000)
+    return () => clearInterval(timer)
+  }, [captchaCooldown])
+
+  const actionBusy =
+    loading ||
+    isDownloading ||
+    ffmpegBusy ||
+    authBusy ||
+    isSavingConfig ||
+    isResettingConfig ||
+    isUpdatingDownloadStatus
+  const withAuthLock = async (operation) => {
+    if (actionBusy || authLock.current || ffmpegLock.current || configActionLock.current) return
+    authLock.current = true
+    setAuthBusy(true)
+    try {
+      await operation()
     } finally {
-      setFFmpegMessage(null)
+      authLock.current = false
+      setAuthBusy(false)
     }
   }
-
-  // 删除 FFmpeg
-  const handleDeleteFFmpeg = async () => {
-    try {
-      await invoke("delete_ffmpeg")
-      setStatus({ type: "default", message: "FFmpeg 已删除" })
-    } catch (error) {
-      setStatus({ type: "error", message: `删除失败: ${error}` })
-    }
-  }
-
-  // 选择下载文件夹
-  const handleSelectFolder = async () => {
-    try {
-      const selected = await open({ directory: true, multiple: false })
-      if (selected) {
-        handleChange("download_path", selected)
-        setStatus({ type: "warning", message: "下载路径已配置，点击保存后才可生效" })
+  const sendCaptcha = () => {
+    if (!phone.trim() || !countrycode.trim() || captchaCooldown > 0 || auth === null) return
+    return withAuthLock(async () => {
+      try {
+        await invoke("netease_send_captcha", { phone: phone.trim(), countrycode: countrycode.trim() })
+        setCaptchaCooldown(60)
+        setStatus({ type: "default", message: t("neteaseCaptchaSent") })
+      } catch (error) {
+        const code = safeNeteaseErrorCode(error)
+        setStatus({ type: "error", message: t(code || "neteaseCaptchaSendFailed") })
       }
-    } catch (error) {
-      setStatus({ type: "error", message: `选择失败: ${error}` })
-    }
+    })
   }
+  const login = () => {
+    if (!phone.trim() || !countrycode.trim() || !captcha.trim() || auth === null) return
+    return withAuthLock(async () => {
+      try {
+        const result = await invoke("netease_login", {
+          phone: phone.trim(),
+          countrycode: countrycode.trim(),
+          captcha: captcha.trim(),
+        })
+        if (result?.logged_in !== true) throw new Error("NETEASE_AUTH_FAILED")
+        setAuth({ logged_in: true, nickname: result.nickname || "" })
+        setCaptcha("")
+        setStatus({ type: "default", message: t("neteaseLoginSuccess") })
+      } catch (error) {
+        const code = safeNeteaseErrorCode(error)
+        setStatus({ type: "error", message: t(code || "neteaseLoginFailed") })
+      }
+    })
+  }
+  const logout = () =>
+    withAuthLock(async () => {
+      try {
+        await invoke("netease_logout")
+        setAuth({ logged_in: false, nickname: "" })
+        setPhone("")
+        setCaptcha("")
+        setStatus({ type: "default", message: t("neteaseLogoutSuccess") })
+      } catch {
+        setStatus({ type: "error", message: t("neteaseLogoutFailed") })
+      }
+    })
 
-  // 打开配置文件夹
-  const handleOpenConfig = async () => {
+  const change = (key, value) => setConfig((current) => ({ ...current, [key]: value }))
+  const chooseFolder = async () => {
+    const selected = await open({ directory: true, multiple: false })
+    if (selected) change("download_path", selected)
+  }
+  const submit = async (event) => {
+    event.preventDefault()
+    if (actionBusy || configActionLock.current) {
+      setStatus({ type: "warning", message: t("saveBusy") })
+      return
+    }
+    configActionLock.current = true
+    setIsSavingConfig(true)
     try {
-      const configDir = await appDataDir()
-      await openPath(configDir)
-    } catch (error) {
-      setStatus({ type: "error", message: `打开失败: ${error}` })
+      await saveConfig(config)
+      setLanguage(config.language)
+      await reloadLocalMusic()
+      setStatus({ type: "default", message: t("configChanged") })
+    } catch {
+      setStatus({ type: "error", message: t("saveFailed") })
+    } finally {
+      configActionLock.current = false
+      setIsSavingConfig(false)
     }
   }
-
-  // 重置配置
-  const handleReset = async () => {
-    try {
-      await resetConfig()
-      setConfig(await getConfig())
-      setStatus({ type: "warning", message: "已重置为默认配置，需要点击保存后才可生效" })
-    } catch (error) {
-      setStatus({ type: "error", message: `重置失败: ${error}` })
-    }
-  }
-
-  // 批量更新歌曲下载状态
-  const handleSetAllDownloadStatus = async (downloaded) => {
+  const setAllDownloadStatus = async (downloaded) => {
+    if (actionBusy || !songList?.length) return
     setIsUpdatingDownloadStatus(true)
     try {
       const changed = await invoke("set_all_download_status", { downloaded })
-      if (changed > 0) {
-        setAllSongStatuses(downloaded)
-      }
-
+      setAllSongStatuses(downloaded)
       setStatus({
         type: "default",
-        message:
-          changed === 0
-            ? `所有歌曲已经是${downloaded ? "已下载" : "未下载"}状态`
-            : `已将 ${changed} 首歌曲标为${downloaded ? "已下载" : "未下载"}`,
+        message: t("batchStatus")
+          .replace("{count}", changed)
+          .replace("{state}", downloaded ? t("downloadedMark") : t("notDownloaded")),
       })
-    } catch (error) {
-      setStatus({ type: "error", message: `批量更新失败: ${error}` })
+    } catch {
+      setStatus({ type: "error", message: t("operationFailed") })
     } finally {
       setIsUpdatingDownloadStatus(false)
     }
   }
 
-  // 保存配置
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const manageFFmpeg = async (action) => {
+    if (actionBusy || ffmpegLock.current || configActionLock.current) return
+    ffmpegLock.current = true
+    setFFmpegBusy(true)
+    setFFmpegProgress(null)
     try {
-      await saveConfig(config)
-      setStatus({ type: "default", message: "配置已保存" })
-    } catch (error) {
-      setStatus({ type: "error", message: `保存失败: ${error}` })
+      if (action === "download") {
+        const onProgress = new Channel()
+        onProgress.onmessage = ({ stage, downloaded, total }) => {
+          if (stage === "extracting") setFFmpegProgress(t("ffmpegExtracting"))
+          else {
+            const size = (downloaded / 1024 / 1024).toFixed(1)
+            const limit = total ? ` / ${(total / 1024 / 1024).toFixed(1)} MB` : " MB"
+            setFFmpegProgress(`${t("ffmpegDownloading")} ${size}${limit}`)
+          }
+        }
+        await invoke("download_ffmpeg", { onProgress })
+      }
+      if (action === "delete") {
+        await invoke("delete_ffmpeg")
+        setStatus({ type: "default", message: t("ffmpegDeleted") })
+      } else {
+        const version = await invoke("get_ffmpeg_version")
+        setStatus({ type: "default", message: version })
+      }
+    } catch {
+      setStatus({ type: "error", message: t("ffmpegFailed") })
+    } finally {
+      ffmpegLock.current = false
+      setFFmpegBusy(false)
+      setFFmpegProgress(null)
     }
   }
 
-  if (!config) {
-    return <div className="flex-center min-h-full">{status?.message}</div>
+  const reset = async () => {
+    if (actionBusy || configActionLock.current) {
+      setStatus({ type: "warning", message: t("saveBusy") })
+      return
+    }
+    configActionLock.current = true
+    setIsResettingConfig(true)
+    try {
+      await resetConfig()
+      const nextConfig = await getConfig()
+      setConfig(nextConfig)
+      setLanguage(nextConfig.language)
+      await reloadLocalMusic()
+      setStatus({ type: "default", message: t("saved") })
+    } catch {
+      setStatus({ type: "error", message: t("saveFailed") })
+    } finally {
+      configActionLock.current = false
+      setIsResettingConfig(false)
+    }
   }
 
+  if (!config) return <div className="flex-center min-h-full">{t("loading")}</div>
+  const boolOptions = [
+    { value: false, label: t("disabled") },
+    { value: true, label: t("enabled") },
+  ]
+  const qualityOptions = [
+    { value: "hires", label: t("qualityHires") },
+    { value: "lossless", label: t("qualityLossless") },
+    { value: "exhigh", label: t("qualityExhigh") },
+    { value: "standard", label: t("qualityStandard") },
+  ]
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden">
+    <form onSubmit={submit} className="flex flex-col h-full overflow-hidden">
       <div className="flex-1 p-8 pl-10 overflow-y-scroll">
         <div className="flex flex-col gap-8 max-w-150 mx-auto">
-          <SettingsItem
-            title="FFmpeg 管理"
-            desc="用于转换音频格式和压缩封面图片，使用前请确保已正确安装"
-            className="gap-2"
-          >
-            {platform() === "windows" && (
-              <>
-                <Button
-                  type="button"
-                  onClick={handleDownloadFFmpeg}
-                  disabled={ffmpegMessage !== null}
-                  className="border-border hover:border-border"
-                >
-                  下载 FFmpeg
-                </Button>
-                <Button
-                  type="button"
-                  onClick={handleDeleteFFmpeg}
-                  disabled={ffmpegMessage !== null}
-                  className="border-border hover:border-border"
-                >
-                  删除 FFmpeg
-                </Button>
-              </>
-            )}
-            <Button
-              type="button"
-              onClick={handleCheckVersion}
-              disabled={ffmpegMessage !== null}
-              className="border-border hover:border-border"
-            >
-              查看版本
-            </Button>
+          <SettingsItem title={t("language")}>
+            <Select options={languageOptions} value={config.language} onChange={(value) => change("language", value)} />
           </SettingsItem>
-
-          <SettingsItem title="存储位置" desc="指定下载歌曲文件时的存储位置">
+          <SettingsItem title={t("neteaseAuthTitle")} desc={t("neteaseAuthHint")}>
+            <div className="flex flex-col gap-3 w-full">
+              <div className="text-sm" role="status" aria-live="polite">
+                {auth === null
+                  ? t("loading")
+                  : auth.logged_in
+                    ? `${t("neteaseLoggedIn")}${auth.nickname ? ` · ${auth.nickname}` : ""}`
+                    : t("neteaseLoggedOut")}
+              </div>
+              {auth !== null &&
+                (auth.logged_in ? (
+                  <Button type="button" disabled={actionBusy} onClick={logout}>
+                    {authBusy ? t("neteaseLoggingOut") : t("neteaseLogout")}
+                  </Button>
+                ) : (
+                  <>
+                    <div className="flex gap-2 w-full">
+                      <Input
+                        aria-label={t("countryCode")}
+                        inputMode="numeric"
+                        autoComplete="tel-country-code"
+                        value={countrycode}
+                        onInput={(event) => setCountrycode(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                        placeholder="86"
+                        className="w-20 flex-none"
+                        disabled={actionBusy || auth === null}
+                        onKeyDown={(event) => event.key === "Enter" && event.preventDefault()}
+                      />
+                      <Input
+                        aria-label={t("phoneNumber")}
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="tel-national"
+                        value={phone}
+                        onInput={(event) => setPhone(event.target.value.replace(/[^\d]/g, "").slice(0, 20))}
+                        placeholder={t("phoneNumber")}
+                        disabled={actionBusy || auth === null}
+                        onKeyDown={(event) => event.key === "Enter" && event.preventDefault()}
+                      />
+                      <Button
+                        type="button"
+                        disabled={actionBusy || !phone.trim() || !countrycode.trim() || captchaCooldown > 0}
+                        onClick={sendCaptcha}
+                      >
+                        {authBusy
+                          ? t("neteaseSendingCaptcha")
+                          : captchaCooldown
+                            ? `${t("neteaseResendIn")} ${captchaCooldown}s`
+                            : t("neteaseSendCaptcha")}
+                      </Button>
+                    </div>
+                    <div className="flex gap-2 w-full">
+                      <Input
+                        aria-label={t("smsCode")}
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={captcha}
+                        onInput={(event) => setCaptcha(event.target.value.replace(/\D/g, "").slice(0, 12))}
+                        placeholder={t("smsCode")}
+                        disabled={actionBusy || auth === null}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault()
+                            login()
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        disabled={actionBusy || !phone.trim() || !countrycode.trim() || !captcha.trim()}
+                        onClick={login}
+                      >
+                        {authBusy ? t("neteaseLoggingIn") : t("neteaseLogin")}
+                      </Button>
+                    </div>
+                  </>
+                ))}
+            </div>
+          </SettingsItem>
+          <SettingsItem title={t("audioQuality")} desc={t("audioQualityHint")}>
+            <Select
+              options={qualityOptions}
+              value={config.audio_quality}
+              onChange={(value) => change("audio_quality", value)}
+            />
+          </SettingsItem>
+          <SettingsItem title={t("downloadPath")} desc={t("downloadPathHint")}>
             <Input
               value={config.download_path}
-              onInput={(e) => handleChange("download_path", e.target.value)}
-              placeholder="请选择下载路径"
+              onInput={(event) => change("download_path", event.target.value)}
+              placeholder={t("select")}
             />
-            <Button type="button" onClick={handleSelectFolder} className="border-l-0 border-border hover:border-border">
-              选择文件夹
+            <Button
+              type="button"
+              onClick={chooseFolder}
+              disabled={actionBusy}
+              className="border-l-0 border-border hover:border-border"
+            >
+              {t("choose")}
             </Button>
           </SettingsItem>
-
-          <SettingsItem title="并行下载数量" desc="同时进行下载的任务数量，数值越大下载越快但占用资源也越多">
+          <SettingsItem title={t("concurrency")} desc={t("concurrencyHint")}>
             <Select
-              options={[
-                { value: 1, label: "1 个" },
-                { value: 2, label: "2 个" },
-                { value: 3, label: "3 个（推荐）" },
-                { value: 4, label: "4 个" },
-                { value: 5, label: "5 个" },
-                { value: 6, label: "6 个" },
-              ]}
+              options={[1, 2, 3, 4, 5, 6].map((value) => ({ value, label: String(value) }))}
               value={config.concurrent_downloads}
-              onChange={(value) => handleChange("concurrent_downloads", value)}
+              onChange={(value) => change("concurrent_downloads", value)}
             />
           </SettingsItem>
-
-          <SettingsItem title="下载伴奏" desc="是否同时下载标题含 Instrumental 的伴奏版本">
+          <SettingsItem title={t("instrumental")} desc={t("instrumentalHint")}>
             <Select
-              options={[
-                { value: false, label: "不下载伴奏" },
-                { value: true, label: "下载伴奏" },
-              ]}
+              options={boolOptions}
               value={config.download_instrumental}
-              onChange={(value) => handleChange("download_instrumental", value)}
+              onChange={(value) => change("download_instrumental", value)}
             />
           </SettingsItem>
-
-          <SettingsItem title="下载歌词" desc="是否从官网同步获取并下载 LRC 歌词">
+          <SettingsItem title={t("lyrics")} desc={t("lyricsHint")}>
             <Select
-              options={[
-                { value: false, label: "不下载歌词" },
-                { value: true, label: "下载歌词" },
-              ]}
+              options={boolOptions}
               value={config.download_lyrics}
-              onChange={(value) => handleChange("download_lyrics", value)}
+              onChange={(value) => change("download_lyrics", value)}
             />
           </SettingsItem>
-
-          <SettingsItem title="日期元数据" desc="选择写入音频 ID3 元数据时使用的日期格式">
+          <SettingsItem title={t("artistSeparator")} desc={t("artistSeparatorHint")}>
             <Select
               options={[
-                { value: "year", label: "仅年份：2025" },
-                { value: "full", label: "完整日期：2025-09-05" },
+                { value: ";", label: t("separatorSemicolon") },
+                { value: "/", label: t("separatorSlash") },
+                { value: ",", label: t("separatorComma") },
+                { value: "、", label: t("separatorIdeographicComma") },
+                { value: " & ", label: t("separatorAmpersand") },
+              ]}
+              value={config.artist_separator}
+              onChange={(value) => change("artist_separator", value)}
+            />
+          </SettingsItem>
+          <SettingsItem title={t("dateMetadata")} desc={t("dateMetadataHint")}>
+            <Select
+              options={[
+                { value: "year", label: t("dateYear") },
+                { value: "full", label: t("dateFull") },
               ]}
               value={config.id3_date_format}
-              onChange={(value) => handleChange("id3_date_format", value)}
+              onChange={(value) => change("id3_date_format", value)}
             />
           </SettingsItem>
-
-          <SettingsItem title="自定义专辑名" desc="是否在保存的专辑文件夹名称前，添加日期前缀">
+          <SettingsItem title={t("albumFolder")} desc={t("albumFolderHint")}>
             <Select
               options={[
-                { value: "none", label: "仅专辑名：焰烬曙明" },
-                { value: "year", label: "年份前缀：[2025] 焰烬曙明" },
-                { value: "lite", label: "简单日期前缀：[250905] 焰烬曙明" },
-                { value: "full", label: "完整日期前缀：[2025-09-05] 焰烬曙明" },
+                { value: "none", label: t("albumNone") },
+                { value: "year", label: t("albumYear") },
+                { value: "lite", label: t("albumLite") },
+                { value: "full", label: t("albumFull") },
               ]}
               value={config.custom_album}
-              onChange={(value) => handleChange("custom_album", value)}
+              onChange={(value) => change("custom_album", value)}
             />
           </SettingsItem>
-
-          <SettingsItem title="显示专辑封面" desc="在首页列表中显示封面图片，此选项开启时可能会影响性能">
-            <Select
-              options={[
-                { value: true, label: "显示封面" },
-                { value: false, label: "隐藏封面" },
-              ]}
-              value={config.show_cover}
-              onChange={(value) => handleChange("show_cover", value)}
-            />
+          <SettingsItem title={t("cover")} desc={t("coverHint")}>
+            <Select options={boolOptions} value={config.show_cover} onChange={(value) => change("show_cover", value)} />
           </SettingsItem>
-
-          <SettingsItem title="下载状态" className="gap-2">
-            <Button
-              type="button"
-              onClick={() => handleSetAllDownloadStatus(true)}
-              disabled={!songList?.length || isUpdatingDownloadStatus}
-              className="border-border hover:border-border"
-            >
-              全部标为已下载
+          <SettingsItem title={t("ffmpegTitle")} desc={t("ffmpegHint")}>
+            <div className="flex flex-col gap-2 w-full">
+              <div className="flex gap-2 flex-wrap">
+                {platform() === "windows" && (
+                  <>
+                    <Button type="button" disabled={actionBusy} onClick={() => manageFFmpeg("download")}>
+                      {t("ffmpegInstall")}
+                    </Button>
+                    <Button type="button" disabled={actionBusy} onClick={() => manageFFmpeg("delete")}>
+                      {t("ffmpegDelete")}
+                    </Button>
+                  </>
+                )}
+                <Button type="button" disabled={actionBusy} onClick={() => manageFFmpeg("check")}>
+                  {t("ffmpegVersion")}
+                </Button>
+              </div>
+              {platform() !== "windows" && (
+                <span className="text-xs text-secondary">
+                  {platform() === "macos" ? t("ffmpegMac") : t("ffmpegLinux")}
+                </span>
+              )}
+              {ffmpegProgress && (
+                <span role="status" className="text-sm">
+                  {ffmpegProgress}
+                </span>
+              )}
+            </div>
+          </SettingsItem>
+          <SettingsItem title={t("downloadStatus")} desc={t("downloadStatusHint")} className="gap-2">
+            <Button type="button" onClick={() => setAllDownloadStatus(true)} disabled={actionBusy || !songList?.length}>
+              {t("markAllDownloaded")}
             </Button>
             <Button
               type="button"
-              onClick={() => handleSetAllDownloadStatus(false)}
-              disabled={!songList?.length || isUpdatingDownloadStatus}
-              className="border-border hover:border-border"
+              onClick={() => setAllDownloadStatus(false)}
+              disabled={actionBusy || !songList?.length}
             >
-              全部标为未下载
+              {t("markAllPending")}
             </Button>
           </SettingsItem>
-
-          {import.meta.env.DEV && (
-            <SettingsItem title="配置文件">
-              <Button type="button" onClick={handleOpenConfig} className="border-border hover:border-border">
-                打开配置文件夹
-              </Button>
-            </SettingsItem>
-          )}
         </div>
       </div>
-
       <div className="flex-center justify-end gap-4 mx-10 py-6 border-t">
-        {(ffmpegMessage !== null || status) && (
+        {status && (
           <span
-            role="status"
             className={cn(
               "flex-1",
-              ffmpegMessage === null && status?.type === "error" && "text-red-400",
-              ffmpegMessage === null && status?.type === "warning" && "text-amber-400",
+              status.type === "error" && "text-red-400",
+              status.type === "warning" && "text-amber-400",
             )}
           >
-            {ffmpegMessage ?? status?.message}
+            {status.message}
           </span>
         )}
-        <Button type="button" onClick={handleReset}>
-          重置
+        <Button type="button" onClick={reset} disabled={actionBusy}>
+          {isResettingConfig ? t("resetting") : t("reset")}
         </Button>
-        <Button type="submit">保存设置</Button>
+        <Button type="submit" disabled={actionBusy}>
+          {isSavingConfig ? t("saving") : t("save")}
+        </Button>
       </div>
     </form>
   )

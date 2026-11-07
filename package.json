@@ -1,11 +1,11 @@
 {
-  "name": "siren-downloader",
+  "name": "metal-scar-downloader",
   "private": true,
-  "version": "0.3.7",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "node scripts/prepare-netease-api.mjs && vite",
+    "build": "node scripts/prepare-netease-api.mjs && vite build",
     "fix": "biome check --write",
     "fmt": "cargo fmt --manifest-path src/Cargo.toml && cargo clippy --fix --allow-dirty --allow-staged --manifest-path src/Cargo.toml"
   },

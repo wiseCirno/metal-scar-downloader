@@ -1,0 +1,9 @@
+{
+  "name": "metal-scar-netease-api-runtime",
+  "private": true,
+  "version": "1.0.0",
+  "type": "commonjs",
+  "dependencies": {
+    "@neteasecloudmusicapienhanced/api": "4.41.1"
+  }
+}

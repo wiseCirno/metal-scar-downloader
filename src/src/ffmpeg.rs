@@ -1,8 +1,8 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use reqwest::get;
 use serde::Serialize;
 use std::env;
-use std::fs::{create_dir_all, remove_file, rename, File};
+use std::fs::{File, create_dir_all, remove_file, rename};
 use std::io::copy;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};

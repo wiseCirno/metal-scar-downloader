@@ -1,9 +1,17 @@
 # dependencies
 node_modules
+.pnpm-store
+
+# local validation cache
+.local-validation/
+.idea/
+scripts/
 
 # production
-dist
+dist/
+artifacts/
 
 # tauri
 src/gen
 src/target
+src/resources

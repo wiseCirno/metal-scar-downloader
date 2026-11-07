@@ -6,55 +6,66 @@ const DEFAULT_CONFIG = {
   download_instrumental: false,
   download_lyrics: false,
   id3_date_format: "year",
+  artist_separator: ";",
   custom_album: "none",
   show_cover: true,
+  language: "zh-Hans",
+  netease_artist_id: "122546004",
+  audio_quality: "lossless",
 }
 
-// 左侧塞壬唱片；右侧网易云
-const SYSTEM_ALBUM_MATCH = {
-  "Operation Barrenland": "Operation Barrenland (W&W Soundtrack Mix)",
-  "危机合约黄铁·利刃·燃灰OST": "危机合约 黄铁·利刃·燃灰OST",
-  "Operation Pine Soot": "危机合约松烟行动OST",
-  "2022明日方舟音律联觉-灯下定影原声EP": "音律联觉-灯下定影原声EP",
-  "8-bit弹雨与断罪之拳": "狂弹要塞！罗德大兵集结",
-  "冉冉升起，直播新星": "最后的全能系美少女！主播U的每日泰拉分享 (真没跑路)",
-  "冬隐归路OST": "明日方舟：冬隐归路OST",
-  "A Toda Vela": "出苍白海OST",
-  "焰烬曙明OST": "明日方舟：焰烬曙明OST",
-  "卫戍协议盟约OST": "卫戍协议：盟约OST",
-  "涤墨作战OST": "危机合约涤墨作战OST",
-  月行水上: "月行水上OST",
-  "视相博物馆：演化": "视相博物馆：演化OST",
-}
+export const CONFIG_CHANGED_EVENT = "app-config-changed"
 
+const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG)
+const AUDIO_QUALITIES = new Set(["standard", "higher", "exhigh", "lossless", "hires"])
 let storeInstance = null
 
 async function getStore() {
-  if (!storeInstance) {
-    storeInstance = await load("config.json", { autoSave: true })
-  }
+  if (!storeInstance) storeInstance = await load("config.json", { autoSave: true })
   return storeInstance
 }
 
-export async function initConfig() {
+function migrateConfig(config) {
+  const migrated = { ...DEFAULT_CONFIG }
+  if (config && typeof config === "object") {
+    for (const key of CONFIG_KEYS) {
+      if (key in config) migrated[key] = config[key]
+    }
+  }
+  const artistId = String(migrated.netease_artist_id)
+  migrated.netease_artist_id =
+    /^\d{1,20}$/.test(artistId) && /[1-9]/.test(artistId) ? artistId : DEFAULT_CONFIG.netease_artist_id
+  if (migrated.audio_quality === "higher") migrated.audio_quality = "exhigh"
+  migrated.audio_quality = AUDIO_QUALITIES.has(migrated.audio_quality)
+    ? migrated.audio_quality
+    : DEFAULT_CONFIG.audio_quality
+  if (![";", "/", ",", "、", " & "].includes(migrated.artist_separator)) migrated.artist_separator = ";"
+  return migrated
+}
+
+async function readAndMigrate() {
   const store = await getStore()
-  const existingConfig = await store.get("app_config")
-  await store.set("app_config", { ...DEFAULT_CONFIG, ...existingConfig })
-  await store.set("album_match", SYSTEM_ALBUM_MATCH)
+  const existing = await store.get("app_config")
+  const migrated = migrateConfig(existing)
+  await store.set("app_config", migrated)
+  return migrated
+}
+
+export async function initConfig() {
+  await readAndMigrate()
 }
 
 export async function getConfig() {
-  const store = await getStore()
-  const config = await store.get("app_config")
-  return { ...DEFAULT_CONFIG, ...config }
+  return readAndMigrate()
 }
 
 export async function saveConfig(config) {
   const store = await getStore()
-  await store.set("app_config", config)
+  const nextConfig = migrateConfig(config)
+  await store.set("app_config", nextConfig)
+  window.dispatchEvent(new CustomEvent(CONFIG_CHANGED_EVENT, { detail: nextConfig }))
 }
 
 export async function resetConfig() {
-  const store = await getStore()
-  await store.set("app_config", DEFAULT_CONFIG)
+  await saveConfig(DEFAULT_CONFIG)
 }
