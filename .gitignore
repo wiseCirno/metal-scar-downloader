@@ -5,11 +5,12 @@ node_modules
 # local validation cache
 .local-validation/
 .idea/
-scripts/
+/scripts/generate-icons.py
 
 # production
 dist/
 artifacts/
+/release-assets/
 
 # tauri
 src/gen

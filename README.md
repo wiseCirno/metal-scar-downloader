@@ -2,7 +2,7 @@
 <h3>铁痕电台下载器</h3>
 <p>从网易云音乐下载铁痕电台的音乐专辑，保存封面、歌词与歌曲信息</p>
 
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-d8d8d8)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-d8d8d8)
 ![Stars](https://img.shields.io/github/stars/wiseCirno/metal-scar-downloader?style=flat&color=d8d8d8)
 ![Downloads](https://img.shields.io/github/downloads/wiseCirno/metal-scar-downloader/total?color=d8d8d8)
 ![License](https://img.shields.io/github/license/wiseCirno/metal-scar-downloader?color=d8d8d8)
@@ -28,7 +28,11 @@ EXE 即可
 Windows 需要 WebView2
 运行时，启动时若提示缺少组件，可在 [这里](https://developer.microsoft.com/zh-cn/microsoft-edge/webview2) 下载安装
 
-macOS 用户可参考文末的开发与构建说明，从源码构建应用
+macOS 提供 Apple Silicon（`aarch64`）和 Intel（`x86_64`）两种 DMG，打开后将应用拖入“应用程序”即可。首次打开若提示开发者未验证，可在“系统设置 → 隐私与安全性”中允许打开
+
+Linux 提供 x64 AppImage 和 deb。AppImage 添加执行权限后即可运行；Ubuntu / Debian 推荐下载 deb，在终端执行 `sudo apt install ./下载的文件.deb`，自动安装所需依赖
+
+三个平台均内置 Node.js 与网易云音乐 API 运行资源，普通用户直接下载对应安装包即可使用
 
 ## 配置
 
@@ -37,6 +41,8 @@ macOS 用户可参考文末的开发与构建说明，从源码构建应用
 Windows 支持一键下载安装 FFmpeg
 
 macOS 需要安装 [Homebrew](https://brew.sh)，并通过 `brew install ffmpeg` 安装 FFmpeg 工具
+
+Linux deb 会自动安装 FFmpeg；AppImage 用户请通过发行版的软件包管理器安装，例如 Ubuntu / Debian 使用 `sudo apt install ffmpeg`
 
 安装完成后，点击“查看版本”可正确显示 FFmpeg 版本，则表示安装成功
 
@@ -160,5 +166,18 @@ npm install --prefix runtime/netease-api --save-exact @neteasecloudmusicapienhan
 ```
 
 之后执行 `pnpm run build` 或 `pnpm dev`，即可按新版本准备运行资源
+
+### 自动构建与发行
+
+提交到 `main`、向 `main` 发起 PR，或在 Actions 页面手动运行 Build，都会生成 Windows x64、macOS Apple Silicon / Intel 和 Linux x64 安装包。测试包可在对应 Actions 运行页面的 Artifacts 中下载
+
+正式发行时，先统一 `package.json`、`src/Cargo.toml` 和 `src/Cargo.lock` 中本应用的版本，再推送对应标签，例如当前版本使用 `v0.1.0`。标签必须与应用版本一致；所有平台构建及检查通过后，会自动创建 GitHub Release 并上传安装包及 SHA-256 校验文件
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+构建脚本与 `runtime/netease-api` 中的依赖清单、锁文件均需提交到 Git，生成的依赖和运行资源由 CI 自动准备
 
 </details>

@@ -301,6 +301,26 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires the prepared bundled Node runtime"]
+    async fn bundled_worker_health_offline() {
+        let base = std::env::temp_dir().join(format!(
+            "msr-embedded-offline-{}",
+            getrandom_nonce().unwrap()
+        ));
+        let runtime = unpack_runtime(&base).unwrap();
+        assert_eq!(runtime, unpack_runtime(&base).unwrap());
+        let health = call_at_paths(&runtime, &base.join("cache"), "health", json!({}))
+            .await
+            .unwrap();
+        assert_eq!(health.body["code"], 200);
+        assert!(
+            health.body["version"]
+                .as_str()
+                .is_some_and(|version| !version.is_empty())
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires the prepared bundled Node runtime"]
     async fn bundled_worker_health_and_anonymous_catalog() {
         let base =
             std::env::temp_dir().join(format!("msr-embedded-{}", getrandom_nonce().unwrap()));
