@@ -1,6 +1,5 @@
 """Validate release inputs, smoke-check the embedded API, and collect CI assets."""
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -53,7 +52,8 @@ def check_runtime(target):
                            env=env, stdin=request, stdout=response, check=True, timeout=60)
             response.seek(0)
             result = json.loads(response.read())
-        expected = json.loads((ROOT / "runtime/netease-api/package.json").read_text(encoding="utf-8"))["dependencies"]["@neteasecloudmusicapienhanced/api"]
+        expected = json.loads((ROOT / "runtime/netease-api/package.json")
+                              .read_text(encoding="utf-8"))["dependencies"]["@neteasecloudmusicapienhanced/api"]
         assert result.get("id") == 1 and result.get("body", {}).get("code") == 200, result
         assert result["body"]["version"] == expected, result
     print(f"Embedded runtime health passed: {target}, API {expected}")
@@ -63,7 +63,14 @@ def package(target, kind, output):
     value = version()
     release = ROOT / "src/target" / target / "release"
     output.mkdir(parents=True, exist_ok=True)
-    stem = f"metal-scar-downloader_{value}_{target}"
+    platforms = {
+        "x86_64-pc-windows-msvc": ("windows", "x64"),
+        "aarch64-apple-darwin": ("macos", "aarch64"),
+        "x86_64-unknown-linux-gnu": ("linux", "x64"),
+    }
+    expected_kind, arch = platforms[target]
+    assert kind == expected_kind, f"Target {target} requires format {expected_kind}, got {kind}"
+    stem = f"metal-scar-downloader_{value}_{kind}_{arch}"
     assets = []
     if kind == "windows":
         source = release / "metal-scar-downloader.exe"
@@ -75,7 +82,7 @@ def package(target, kind, output):
             assert archive.testzip() is None
         assets.append(destination)
     else:
-        formats = [("dmg", "*.dmg")] if kind == "macos" else [("appimage", "*.AppImage"), ("deb", "*.deb")]
+        formats = [("dmg", "*.dmg")] if kind == "macos" else [("appimage", "*.AppImage"), ("deb", "*.deb"), ("rpm", "*.rpm")]
         for folder, pattern in formats:
             matches = list((release / "bundle" / folder).glob(pattern))
             assert len(matches) == 1, f"Expected one {pattern} in {release / 'bundle' / folder}, got {matches}"
@@ -84,9 +91,7 @@ def package(target, kind, output):
             destination = output / f"{stem}{source.suffix}"
             shutil.copy2(source, destination)
             assets.append(destination)
-    checksum = output / f"{stem}_SHA256SUMS.txt"
-    checksum.write_text("".join(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n" for path in assets), encoding="utf-8")
-    for path in [*assets, checksum]:
+    for path in assets:
         print(f"Release asset: {path.name} ({path.stat().st_size} bytes)")
 
 

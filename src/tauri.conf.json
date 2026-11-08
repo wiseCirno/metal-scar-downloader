@@ -53,6 +53,9 @@
     "linux": {
       "deb": {
         "depends": ["ffmpeg"]
+      },
+      "rpm": {
+        "depends": ["/usr/bin/ffmpeg", "/usr/bin/ffprobe"]
       }
     },
     "icon": [
