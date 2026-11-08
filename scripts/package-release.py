@@ -21,6 +21,11 @@ def version():
     lock = tomllib.loads((ROOT / "src/Cargo.lock").read_text(encoding="utf-8"))
     own = next(p for p in lock["package"] if p["name"] == cargo["package"]["name"])
     tauri = json.loads((ROOT / "src/tauri.conf.json").read_text(encoding="utf-8"))
+    linux_tauri = json.loads((ROOT / "src/tauri.linux.conf.json").read_text(encoding="utf-8"))
+    linux_product_name = linux_tauri["productName"]
+    assert re.fullmatch(r"[A-Za-z0-9_%][A-Za-z0-9_.+%-]*", linux_product_name), (
+        f"Linux bundle productName must be RPM-compatible ASCII, got {linux_product_name!r}"
+    )
     assert cargo["package"]["version"] == own["version"] == value, "Application versions differ"
     assert tauri["version"] == "../package.json", "Tauri must use the shared application version"
     if os.environ.get("GITHUB_REF_TYPE") == "tag":

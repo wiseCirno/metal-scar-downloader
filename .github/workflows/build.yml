@@ -41,16 +41,19 @@ jobs:
           - name: Windows x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
+            config: src/tauri.conf.json
             bundles: --no-bundle
             format: windows
           - name: macOS Apple Silicon
             os: macos-15
             target: aarch64-apple-darwin
+            config: src/tauri.conf.json
             bundles: --bundles dmg
             format: macos
           - name: Linux x64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            config: src/tauri.linux.conf.json
             bundles: --bundles appimage,deb,rpm
             format: linux
     runs-on: ${{ matrix.os }}
@@ -92,7 +95,7 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
       - name: Build desktop packages
-        run: pnpm exec tauri build --config src/tauri.conf.json --target ${{ matrix.target }} ${{ matrix.bundles }}
+        run: pnpm exec tauri build --config ${{ matrix.config }} --target ${{ matrix.target }} ${{ matrix.bundles }}
       - name: Run Rust tests
         run: cargo test --locked --manifest-path src/Cargo.toml --target ${{ matrix.target }} --lib
       - name: Test embedded runtime extraction and worker
