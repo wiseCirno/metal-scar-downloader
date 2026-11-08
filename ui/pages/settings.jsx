@@ -13,7 +13,7 @@ import { useAppStore } from "@/utils/store"
 
 export function SettingsPage() {
   const { t, setLanguage } = useI18n()
-  const { reloadLocalMusic, setAllSongStatuses, songList, loading, isDownloading } = useAppStore()
+  const { reloadLocalMusic, setAllSongStatuses, setNeteaseLoggedIn, songList, loading, isDownloading } = useAppStore()
   const [config, setConfig] = useState(null)
   const [status, setStatus] = useState(null)
   const [ffmpegBusy, setFFmpegBusy] = useState(false)
@@ -49,18 +49,23 @@ export function SettingsPage() {
     let active = true
     invoke("netease_auth_status")
       .then((result) => {
-        if (active) setAuth({ logged_in: result?.logged_in === true, nickname: result?.nickname || "" })
+        if (active) {
+          const loggedIn = result?.logged_in === true
+          setAuth({ logged_in: loggedIn, nickname: result?.nickname || "" })
+          setNeteaseLoggedIn(loggedIn)
+        }
       })
       .catch(() => {
         if (active) {
           setAuth({ logged_in: false, nickname: "" })
+          setNeteaseLoggedIn(false)
           setStatus({ type: "error", message: t("neteaseStatusFailed") })
         }
       })
     return () => {
       active = false
     }
-  }, [t])
+  }, [t, setNeteaseLoggedIn])
 
   useEffect(() => {
     if (captchaCooldown <= 0) return undefined
@@ -111,6 +116,7 @@ export function SettingsPage() {
         })
         if (result?.logged_in !== true) throw new Error("NETEASE_AUTH_FAILED")
         setAuth({ logged_in: true, nickname: result.nickname || "" })
+        setNeteaseLoggedIn(true)
         setCaptcha("")
         setStatus({ type: "default", message: t("neteaseLoginSuccess") })
       } catch (error) {
@@ -124,6 +130,7 @@ export function SettingsPage() {
       try {
         await invoke("netease_logout")
         setAuth({ logged_in: false, nickname: "" })
+        setNeteaseLoggedIn(false)
         setPhone("")
         setCaptcha("")
         setStatus({ type: "default", message: t("neteaseLogoutSuccess") })

@@ -28,6 +28,7 @@ export function HomePage() {
   const songList = useAppStore((state) => state.songList)
   const loading = useAppStore((state) => state.loading)
   const isDownloading = useAppStore((state) => state.isDownloading)
+  const neteaseLoggedIn = useAppStore((state) => state.neteaseLoggedIn)
   const refreshSongList = useAppStore((state) => state.refreshSongList)
   const downloadSongs = useAppStore((state) => state.downloadSongs)
   const [params, setParams] = useSearchParams()
@@ -199,7 +200,6 @@ export function HomePage() {
         <Button onClick={refreshSongList} disabled={loading}>
           {t("getList")}
         </Button>
-        <DownloadLauncher />
       </div>
     )
   return (
@@ -327,13 +327,17 @@ export function HomePage() {
         </Button>
         <Button
           onClick={() => handleDownload(selectedSongs)}
-          disabled={loading || isDownloading || isConfirmingDownload || !selectedSongs.length}
+          disabled={
+            neteaseLoggedIn !== true || loading || isDownloading || isConfirmingDownload || !selectedSongs.length
+          }
         >
           {t("downloadSelected")} {selectedSongs.length > 0 && `(${selectedSongs.length})`}
         </Button>
         <Button
           onClick={() => handleDownload()}
-          disabled={loading || isDownloading || isConfirmingDownload || !filteredSongs.length}
+          disabled={
+            neteaseLoggedIn !== true || loading || isDownloading || isConfirmingDownload || !filteredSongs.length
+          }
         >
           {t("downloadAll")}
         </Button>

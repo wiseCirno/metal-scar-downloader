@@ -16,11 +16,29 @@ export const useAppStore = create((set, get) => ({
   status: null,
   loading: false,
   isDownloading: false,
+  neteaseLoggedIn: false,
+  neteaseAuthRevision: 0,
   activeBatchId: null,
   downloadIds: [],
   downloadItems: {},
   downloadsOpen: false,
   setDownloadsOpen: (downloadsOpen) => set({ downloadsOpen }),
+  setNeteaseLoggedIn: (neteaseLoggedIn) =>
+    set((state) => ({ neteaseLoggedIn: neteaseLoggedIn === true, neteaseAuthRevision: state.neteaseAuthRevision + 1 })),
+  refreshNeteaseAuthStatus: async () => {
+    const revision = get().neteaseAuthRevision
+    try {
+      const status = await invoke("netease_auth_status")
+      if (get().neteaseAuthRevision !== revision) return get().neteaseLoggedIn
+      const loggedIn = status?.logged_in === true
+      set({ neteaseLoggedIn: loggedIn })
+      return loggedIn
+    } catch {
+      if (get().neteaseAuthRevision !== revision) return get().neteaseLoggedIn
+      set({ neteaseLoggedIn: false })
+      return false
+    }
+  },
   patchDownload: (id, patch) =>
     set((state) => {
       const item = state.downloadItems[id]
@@ -66,6 +84,7 @@ export const useAppStore = create((set, get) => ({
   },
 
   initAppData: async () => {
+    get().refreshNeteaseAuthStatus()
     invoke("load_latest_version")
       .then((latestVersion) => {
         if (latestVersion && latestVersion.trim() !== packageJson.version.trim()) set({ hasUpdate: true })
@@ -123,7 +142,7 @@ export const useAppStore = create((set, get) => ({
     })),
 
   downloadSongs: async (targets) => {
-    if (get().isDownloading || get().loading) return null
+    if (get().neteaseLoggedIn !== true || get().isDownloading || get().loading) return null
     const batchId = crypto.randomUUID()
     const successSongIds = []
     const failures = []

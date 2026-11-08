@@ -213,13 +213,13 @@ packages for Windows x64, macOS Apple Silicon, and Linux x64 (AppImage, deb, and
 from Artifacts on the corresponding Actions run page.
 
 For an official release, first synchronize the application's version in `package.json`, `src/Cargo.toml`, and
-`src/Cargo.lock`, then push the corresponding tag—for example, `v0.1.1` for the current version. The tag must match the
+`src/Cargo.lock`, then push the corresponding tag—for example, `v0.1.2` for the current version. The tag must match the
 application version. Once all platform builds and checks pass, a GitHub Release is created automatically with the
 packages and a combined `SHA256SUMS.txt` checksum file.
 
 ```sh
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 Commit the build scripts, along with the dependency manifest and lockfile in `runtime/netease-api`, to Git. CI prepares

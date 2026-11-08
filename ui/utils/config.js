@@ -11,7 +11,7 @@ const DEFAULT_CONFIG = {
   show_cover: true,
   language: "zh-Hans",
   netease_artist_id: "122546004",
-  audio_quality: "lossless",
+  audio_quality: "exhigh",
 }
 
 export const CONFIG_CHANGED_EVENT = "app-config-changed"

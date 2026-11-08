@@ -20,6 +20,7 @@ export const MusicItem = memo(function MusicItem({ song, showCover, selected, on
   const { t } = useI18n()
   const loading = useAppStore((state) => state.loading)
   const isDownloading = useAppStore((state) => state.isDownloading)
+  const neteaseLoggedIn = useAppStore((state) => state.neteaseLoggedIn)
   const downloadSongs = useAppStore((state) => state.downloadSongs)
   const updateSongStatus = useAppStore((state) => state.updateSongStatus)
   const task = useAppStore((state) => state.downloadItems[song.id])
@@ -95,7 +96,7 @@ export const MusicItem = memo(function MusicItem({ song, showCover, selected, on
         items={[
           {
             label: song.download ? t("redownload") : t("download"),
-            disabled: loading || isDownloading,
+            disabled: neteaseLoggedIn !== true || loading || isDownloading,
             onClick: () => downloadSongs([song]),
           },
           {

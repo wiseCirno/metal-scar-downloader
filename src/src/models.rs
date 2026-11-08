@@ -39,7 +39,7 @@ impl Default for AppConfig {
             show_cover: true,
             language: "zh-Hans".into(),
             netease_artist_id: "122546004".into(),
-            audio_quality: "lossless".into(),
+            audio_quality: "exhigh".into(),
             artist_separator: ";".into(),
         }
     }
@@ -399,12 +399,12 @@ mod tests {
     }
 
     #[test]
-    fn legacy_config_defaults_to_netease_lossless_without_serializing_secrets() {
+    fn legacy_config_defaults_to_exhigh_without_serializing_secrets() {
         let config: AppConfig = serde_json::from_value(serde_json::json!({
             "download_path": "Music", "audio_format": "aac", "media_user_token": "old-secret"
         }))
         .unwrap();
-        assert_eq!(config.audio_quality, "lossless");
+        assert_eq!(config.audio_quality, "exhigh");
         assert_eq!(config.netease_artist_id, "122546004");
         assert_eq!(config.artist_separator, ";");
         assert_eq!(AppConfig::default().artist_separator, ";");

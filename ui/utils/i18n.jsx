@@ -871,13 +871,19 @@ locales.forEach((locale, index) => {
     "이 곡의 음질 또는 다운로드에는 VIP 권한이 필요하며 이번 기간의 다운로드 한도가 적용됩니다.",
   ][index]
   messages[locale].qualityHires = [
-    "高解析度无损 (Hi-Res)",
-    "高解析度無損 (Hi-Res)",
-    "High-resolution lossless (Hi-Res)",
-    "ハイレゾロスレス (Hi-Res)",
-    "고해상도 무손실 (Hi-Res)",
+    "高解析度无损 (Hi-Res，需 VIP)",
+    "高解析度無損 (Hi-Res，需 VIP)",
+    "High-resolution lossless (Hi-Res, VIP required)",
+    "ハイレゾロスレス (Hi-Res、VIP 必須)",
+    "고해상도 무손실 (Hi-Res, VIP 필요)",
   ][index]
-  messages[locale].qualityLossless = ["无损 (SQ)", "無損 (SQ)", "Lossless (SQ)", "ロスレス (SQ)", "무손실 (SQ)"][index]
+  messages[locale].qualityLossless = [
+    "无损 (SQ，需 VIP)",
+    "無損 (SQ，需 VIP)",
+    "Lossless (SQ, VIP required)",
+    "ロスレス (SQ、VIP 必須)",
+    "무손실 (SQ, VIP 필요)",
+  ][index]
   messages[locale].qualityExhigh = ["极高 (HQ)", "極高 (HQ)", "High (HQ)", "最高音質 (HQ)", "고음질 (HQ)"][index]
   messages[locale].qualityAttempt = [
     "正在尝试 {title} · {quality}",
