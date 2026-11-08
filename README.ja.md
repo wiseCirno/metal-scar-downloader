@@ -187,12 +187,12 @@ Silicon、Linux x64（AppImage、deb、rpm）のパッケージが生成され�
 Artifacts からダウンロードできます。
 
 正式リリースでは、`package.json`、`src/Cargo.toml`、`src/Cargo.lock` に記載されたアプリのバージョンを一致させてから、対応するタグを
-push してください。現在のバージョンなら `v0.1.0` です。タグはアプリのバージョンと一致する必要があります。すべてのプラットフォームのビルドとチェックに成功すると、GitHub
+push してください。現在のバージョンなら `v0.1.1` です。タグはアプリのバージョンと一致する必要があります。すべてのプラットフォームのビルドとチェックに成功すると、GitHub
 Release が自動作成され、パッケージと統合版の `SHA256SUMS.txt` がアップロードされます。
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 ビルドスクリプトと `runtime/netease-api` の依存マニフェストおよびロックファイルは Git にコミットしてください。依存パッケージと実行リソースは

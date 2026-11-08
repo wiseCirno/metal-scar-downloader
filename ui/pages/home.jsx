@@ -242,7 +242,6 @@ export function HomePage() {
             <Button onClick={() => setParams({})}>{t("clearFilter")}</Button>
           </div>
         )}
-        {!albumGrid && <p className="text-xs text-secondary">{t("selectionHint")}</p>}
         {targetId && (
           <p role="status" className="text-xs text-secondary">
             {t(

@@ -374,13 +374,107 @@ fn reusable_sidecar(path: &Path) -> bool {
             .is_some_and(|e| e.eq_ignore_ascii_case("lrc"))
             && std::fs::symlink_metadata(path).is_ok_and(|m| m.is_file() && !is_link(&m)))
 }
-struct PublicationRollback(Vec<PathBuf>);
-impl Drop for PublicationRollback {
-    fn drop(&mut self) {
-        for path in self.0.iter().rev() {
-            let _ = std::fs::remove_file(path);
+struct PublishedFile {
+    destination: PathBuf,
+    backup: Option<PathBuf>,
+}
+struct PublicationRollback(Vec<PublishedFile>);
+impl PublicationRollback {
+    fn finish(mut self) {
+        for published in self.0.drain(..) {
+            if let Some(backup) = published.backup {
+                let _ = std::fs::remove_file(backup);
+            }
         }
     }
+}
+impl Drop for PublicationRollback {
+    fn drop(&mut self) {
+        for published in self.0.iter().rev() {
+            let _ = std::fs::remove_file(&published.destination);
+            if let Some(backup) = &published.backup {
+                let _ = std::fs::rename(backup, &published.destination);
+            }
+        }
+    }
+}
+fn sibling_path(target: &Path, suffix: &str) -> Result<PathBuf> {
+    let parent = target.parent().context("目标文件缺少父目录")?;
+    for _ in 0..100 {
+        let id = JOB_ID.fetch_add(1, Ordering::Relaxed);
+        let candidate = parent.join(format!(".msr-{}-{id}-{suffix}", std::process::id()));
+        match std::fs::symlink_metadata(&candidate) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(candidate),
+            Ok(_) => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    bail!("无法为目标文件分配暂存路径")
+}
+fn stage_replacement(source: &Path, target: &Path) -> Result<PathBuf> {
+    let parent = target.parent().context("目标文件缺少父目录")?;
+    for _ in 0..100 {
+        let id = JOB_ID.fetch_add(1, Ordering::Relaxed);
+        let staged = parent.join(format!(".msr-{}-{id}-replacement", std::process::id()));
+        let mut output = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staged)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let result = (|| {
+            std::io::copy(&mut std::fs::File::open(source)?, &mut output)?;
+            output.sync_all()?;
+            Ok(())
+        })();
+        drop(output);
+        if let Err(error) = result {
+            let _ = std::fs::remove_file(&staged);
+            return Err(error);
+        }
+        return Ok(staged);
+    }
+    bail!("无法为目标文件创建替换暂存文件")
+}
+fn replace_existing_file(
+    source: &Path,
+    target: &Path,
+    rollback: &mut PublicationRollback,
+) -> Result<()> {
+    let staged = stage_replacement(source, target)?;
+    let result = (|| {
+        let metadata = std::fs::symlink_metadata(target)?;
+        anyhow::ensure!(
+            metadata.is_file() && !is_link(&metadata),
+            "目标文件已存在，拒绝覆盖: {}",
+            target.display()
+        );
+        let backup = sibling_path(target, "backup")?;
+        std::fs::rename(target, &backup)?;
+        if let Err(error) = std::fs::rename(&staged, target) {
+            return match std::fs::rename(&backup, target) {
+                Ok(()) => Err(error.into()),
+                Err(restore_error) => Err(anyhow::anyhow!(
+                    "替换失败，原文件备份保留在 {}: {}; 恢复失败: {}",
+                    backup.display(),
+                    error,
+                    restore_error
+                )),
+            };
+        }
+        rollback.0.push(PublishedFile {
+            destination: target.to_path_buf(),
+            backup: Some(backup),
+        });
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(staged);
+    }
+    result
 }
 fn publish_files(source: &Path, destination: &Path, files: &[PathBuf]) -> Result<()> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -400,8 +494,8 @@ fn publish_files(source: &Path, destination: &Path, files: &[PathBuf]) -> Result
         }
         let target = parent.join(relative.file_name().context("缺少文件名")?);
         match std::fs::symlink_metadata(&target) {
-            Ok(_) => anyhow::ensure!(
-                reusable_sidecar(&target),
+            Ok(metadata) => anyhow::ensure!(
+                metadata.is_file() && !is_link(&metadata),
                 "目标文件已存在，拒绝覆盖: {}",
                 target.display()
             ),
@@ -417,6 +511,10 @@ fn publish_files(source: &Path, destination: &Path, files: &[PathBuf]) -> Result
         }
         let m = std::fs::symlink_metadata(from)?;
         anyhow::ensure!(m.is_file() && !is_link(&m), "暂存文件无效");
+        if std::fs::symlink_metadata(&to).is_ok() {
+            replace_existing_file(from, &to, &mut rollback)?;
+            continue;
+        }
         let mut input = std::fs::File::open(from)?;
         let mut output = match std::fs::OpenOptions::new()
             .write(true)
@@ -429,12 +527,15 @@ fn publish_files(source: &Path, destination: &Path, files: &[PathBuf]) -> Result
             }
             Err(e) => return Err(e).context("发布失败，目标可能已存在"),
         };
-        rollback.0.push(to);
+        rollback.0.push(PublishedFile {
+            destination: to,
+            backup: None,
+        });
         let result = std::io::copy(&mut input, &mut output).and_then(|_| output.sync_all());
         drop(output);
         result?;
     }
-    rollback.0.clear();
+    rollback.finish();
     Ok(())
 }
 fn extension(f: &str) -> &'static str {
@@ -1779,7 +1880,7 @@ mod tests {
         assert!(validate_duration(b"out_time_us=179000000\n", 180000).is_ok());
     }
     #[test]
-    fn publication_never_overwrites_audio_and_skips_existing_cover() {
+    fn publication_overwrites_audio_and_skips_existing_cover() {
         let root = std::env::temp_dir().join(format!(
             "msr-publish-{}-{}",
             std::process::id(),
@@ -1793,15 +1894,13 @@ mod tests {
         std::fs::write(source.join("cover.jpg"), b"cover").unwrap();
         std::fs::write(dest.join("a.mp3"), b"old").unwrap();
         std::fs::write(dest.join("cover.jpg"), b"old-cover").unwrap();
-        assert!(
-            publish_files(
-                &source,
-                &dest,
-                &[source.join("cover.jpg"), source.join("a.mp3")]
-            )
-            .is_err()
-        );
-        assert_eq!(std::fs::read(dest.join("a.mp3")).unwrap(), b"old");
+        publish_files(
+            &source,
+            &dest,
+            &[source.join("cover.jpg"), source.join("a.mp3")],
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(dest.join("a.mp3")).unwrap(), b"new");
         assert_eq!(std::fs::read(dest.join("cover.jpg")).unwrap(), b"old-cover");
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -1851,14 +1950,20 @@ mod tests {
             b"existing-cover"
         );
         std::fs::write(source.join("other.flac"), b"other").unwrap();
+        std::fs::write(source.join("audio.flac"), b"replacement audio").unwrap();
         assert!(
             publish_files(
                 &source,
                 &dest,
-                &[source.join("other.flac"), source.join("missing.lrc")]
+                &[
+                    source.join("audio.flac"),
+                    source.join("other.flac"),
+                    source.join("missing.lrc"),
+                ]
             )
             .is_err()
         );
+        assert_eq!(std::fs::read(dest.join("audio.flac")).unwrap(), b"audio");
         assert!(!dest.join("other.flac").exists());
         std::fs::write(source.join("audio.lrc"), b"replacement lyrics").unwrap();
         publish_files(

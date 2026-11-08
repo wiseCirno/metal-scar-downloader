@@ -177,12 +177,12 @@ npm install --prefix runtime/netease-api --save-exact @neteasecloudmusicapienhan
 x64（AppImage、deb、rpm）安装包。测试包可在对应 Actions 运行页面的 Artifacts 中下载
 
 正式发行时，先统一 `package.json`、`src/Cargo.toml` 和 `src/Cargo.lock` 中本应用的版本，再推送对应标签，例如当前版本使用
-`v0.1.0`。标签必须与应用版本一致；所有平台构建及检查通过后，会自动创建 GitHub Release 并上传安装包和统一的 `SHA256SUMS.txt`
+`v0.1.1`。标签必须与应用版本一致；所有平台构建及检查通过后，会自动创建 GitHub Release 并上传安装包和统一的 `SHA256SUMS.txt`
 校验文件
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 构建脚本与 `runtime/netease-api` 中的依赖清单、锁文件均需提交到 Git，生成的依赖和运行资源由 CI 自动准备

@@ -440,6 +440,7 @@ export function SettingsPage() {
               )}
             </div>
           </SettingsItem>
+          <SettingsItem title={t("selectionShortcuts")} desc={t("selectionHint")} />
           <SettingsItem title={t("downloadStatus")} desc={t("downloadStatusHint")} className="gap-2">
             <Button type="button" onClick={() => setAllDownloadStatus(true)} disabled={actionBusy || !songList?.length}>
               {t("markAllDownloaded")}

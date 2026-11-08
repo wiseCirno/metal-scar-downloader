@@ -177,12 +177,12 @@ npm install --prefix runtime/netease-api --save-exact @neteasecloudmusicapienhan
 `main`에 커밋하거나 `main` 대상 PR을 열거나 Actions 페이지에서 Build를 수동 실행하면 Windows x64, macOS Apple Silicon 및 Linux x64 (AppImage,
 deb, rpm) 설치 패키지가 생성됩니다. 테스트 패키지는 해당 Actions 실행 페이지의 Artifacts에서 다운로드할 수 있습니다.
 
-정식 배포 시에는 먼저 `package.json`, `src/Cargo.toml` 및 `src/Cargo.lock`에 있는 앱 버전을 일치시킨 다음 해당 태그를 푸시하세요. 예를 들어 현재 버전은 `v0.1.0`
+정식 배포 시에는 먼저 `package.json`, `src/Cargo.toml` 및 `src/Cargo.lock`에 있는 앱 버전을 일치시킨 다음 해당 태그를 푸시하세요. 예를 들어 현재 버전은 `v0.1.1`
 입니다. 태그는 앱 버전과 일치해야 합니다. 모든 플랫폼의 빌드 및 검사가 통과하면 GitHub Release가 자동으로 생성되고 설치 패키지와 통합 `SHA256SUMS.txt` 체크섬 파일이 업로드됩니다.
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 빌드 스크립트와 `runtime/netease-api`의 종속성 매니페스트 및 잠금 파일은 Git에 커밋해야 합니다. 종속성과 런타임 리소스는 CI에서 자동으로 준비됩니다.
